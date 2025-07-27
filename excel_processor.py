@@ -168,6 +168,57 @@ class ExcelProcessor:
         except Exception as e:
             self.logger.warning(f"Could not copy shapes from row {source_row} to {target_row}: {e}")
 
+    def _get_row_at_position(self, sheet, position):
+        """Return the row number at a given vertical position"""
+        for row in range(1, sheet.UsedRange.Rows.Count + 2):
+            try:
+                row_top = sheet.Cells(row, 1).Top
+                if row + 1 <= sheet.UsedRange.Rows.Count + 1:
+                    row_bottom = sheet.Cells(row + 1, 1).Top
+                else:
+                    row_bottom = row_top + sheet.Rows(row).Height
+
+                if row_top <= position < row_bottom:
+                    return row
+            except Exception:
+                continue
+
+        return -1
+
+    def _get_shape_row_range(self, sheet, shape):
+        """Get the start and end rows that a shape spans"""
+        start_row = self._get_row_at_position(sheet, shape.Top)
+        end_row = self._get_row_at_position(sheet, shape.Top + shape.Height)
+        return start_row, end_row
+
+    def _copy_shapes_for_block(self, sheet, block_shapes, source_start_row, target_start_row):
+        """Copy shapes that belong to a block from source to target start row"""
+        try:
+            source_top = sheet.Cells(source_start_row, 1).Top
+            target_top = sheet.Cells(target_start_row, 1).Top
+            offset = target_top - source_top
+
+            shapes_copied = 0
+            for shape_info in block_shapes:
+                for shape in sheet.Shapes:
+                    if shape.Name == shape_info['name']:
+                        shape.Copy()
+                        sheet.Paste()
+                        new_shape = sheet.Shapes(sheet.Shapes.Count)
+                        new_shape.Top = shape_info['top'] + offset
+                        new_shape.Left = shape_info['left']
+                        shapes_copied += 1
+                        self.logger.debug(
+                            f"Copied shape '{shape_info['name']}' to block starting row {target_start_row}")
+                        break
+
+            if shapes_copied > 0:
+                self.logger.info(f"Copied {shapes_copied} shapes to block starting at row {target_start_row}")
+
+        except Exception as e:
+            self.logger.warning(
+                f"Could not copy shapes from block starting {source_start_row} to {target_start_row}: {e}")
+
     def _get_shape_row(self, sheet, shape):
         """Determine which row a shape belongs to based on its top position"""
         shape_top = shape.Top
@@ -240,6 +291,7 @@ class ExcelProcessor:
         try:
             self.logger.debug(f"Total shapes in sheet: {sheet.Shapes.Count}")
             for shape in sheet.Shapes:
+                start_row, end_row = self._get_shape_row_range(sheet, shape)
                 shape_info = {
                     'left': shape.Left,
                     'top': shape.Top,
@@ -247,10 +299,13 @@ class ExcelProcessor:
                     'height': shape.Height,
                     'name': shape.Name,
                     'type': shape.Type,
-                    'row': self._get_shape_row(sheet, shape)
+                    'row': self._get_shape_row(sheet, shape),
+                    'start_row': start_row,
+                    'end_row': end_row
                 }
                 all_shapes.append(shape_info)
-                self.logger.debug(f"Stored shape '{shape.Name}' at row {shape_info['row']}")
+                self.logger.debug(
+                    f"Stored shape '{shape.Name}' rows {start_row}-{end_row}")
         except Exception as e:
             self.logger.warning(f"Error storing shapes: {e}")
 
@@ -263,9 +318,15 @@ class ExcelProcessor:
         header_row_height = sheet.Rows(header_row).RowHeight
 
         for block in data_blocks:
-            stored_data = {'data': [], 'formulas': None, 'shapes': [], 'formula_shapes': [],
-                           'data_row_height': sheet.Rows(block['data_row']).RowHeight,
-                           'original_row': block['data_row']}
+            stored_data = {
+                'data': [],
+                'formulas': None,
+                'block_shapes': [],
+                'data_row_height': sheet.Rows(block['data_row']).RowHeight,
+                'original_row': block['data_row'],
+                'start_row': block['data_row'],
+                'end_row': block.get('formula_row', block['data_row'])
+            }
 
             # Store data row
             for col in range(header_start_col, header_end_col + 1):
@@ -276,8 +337,13 @@ class ExcelProcessor:
                     'format': self._get_cell_format(cell)
                 })
 
-            # Note which shapes belong to this row (we'll copy them later)
-            stored_data['shapes'] = [s for s in all_shapes if s['row'] == block['data_row']]
+            # Determine shapes that intersect this data block
+            block_start = block['data_row']
+            block_end = block.get('formula_row', block['data_row'])
+            stored_data['block_shapes'] = [
+                s for s in all_shapes
+                if s['end_row'] >= block_start and s['start_row'] <= block_end
+            ]
 
             # Store formula row if exists
             if 'formula_row' in block:
@@ -290,9 +356,6 @@ class ExcelProcessor:
                         'formula': cell.Formula if cell.HasFormula else None,
                         'format': self._get_cell_format(cell)
                     })
-
-                # Note which shapes belong to formula row
-                stored_data['formula_shapes'] = [s for s in all_shapes if s['row'] == block['formula_row']]
 
             stored_blocks.append(stored_data)
 
@@ -340,8 +403,6 @@ class ExcelProcessor:
                     self.logger.debug(f"Cell {cell.Address}: Value='{cell_data['value']}'")
                 self._apply_cell_format(cell, cell_data['format'])
 
-            # Copy shapes to data row
-            self._copy_shapes_for_row(all_shapes, sheet, original_data_row_in_blocks, current_row)
             current_row += 1
 
             # Original formula row if exists
@@ -358,10 +419,15 @@ class ExcelProcessor:
                         cell.Value = cell_data['value']
                     self._apply_cell_format(cell, cell_data['format'])
 
-                # Copy shapes to formula row
-                if original_formula_row:
-                    self._copy_shapes_for_row(all_shapes, sheet, original_formula_row, current_row)
                 current_row += 1
+
+            # Copy shapes for original block
+            self._copy_shapes_for_block(
+                sheet,
+                stored_block['block_shapes'],
+                stored_block['start_row'],
+                data_row_num
+            )
 
             # Duplicate data row
             duplicate_data_row = current_row
@@ -376,8 +442,6 @@ class ExcelProcessor:
                     cell.Value = cell_data['value']
                 self._apply_cell_format(cell, cell_data['format'])
 
-            # Copy shapes to duplicate data row
-            self._copy_shapes_for_row(all_shapes, sheet, original_data_row_in_blocks, current_row)
             current_row += 1
 
             # Duplicate formula row if exists
@@ -393,10 +457,15 @@ class ExcelProcessor:
                         cell.Value = cell_data['value']
                     self._apply_cell_format(cell, cell_data['format'])
 
-                # Copy shapes to duplicate formula row
-                if original_formula_row:
-                    self._copy_shapes_for_row(all_shapes, sheet, original_formula_row, current_row)
                 current_row += 1
+
+            # Copy shapes for duplicate block
+            self._copy_shapes_for_block(
+                sheet,
+                stored_block['block_shapes'],
+                stored_block['start_row'],
+                duplicate_data_row
+            )
 
             # Empty row
             current_row += 1
