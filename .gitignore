@@ -1,0 +1,52 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*$py.class
+
+# Virtual env
+.venv/
+env/
+ENV/
+venv/
+*.egg-info/
+.eggs/
+
+# IDEs
+.vscode/
+.idea/
+*.sublime-*
+
+# Logs and temp
+*.log
+*.tmp
+*.bak
+*.swp
+session.json
+settings.json
+
+# System
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+build/
+dist/
+*.spec
+
+# PyInstaller
+*.exe
+*.dll
+*.manifest
+
+# Tests cache
+.coverage
+.cache/
+pytest_cache/
+
+# Notebook
+.ipynb_checkpoints/
+
+# Excel/Word temp
+~$*
