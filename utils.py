@@ -1,6 +1,8 @@
 import re
 from pathlib import Path
 from datetime import datetime
+from openpyxl.formula.translate import Translator
+from openpyxl.utils import get_column_letter
 
 
 def generate_unique_filename(output_dir: Path, base_name: str) -> str:
@@ -26,29 +28,21 @@ def parse_excel_address(address: str) -> tuple:
 
 
 def adjust_formula_references(formula: str, row_offset: int, col_offset: int) -> str:
-    def replace_ref(match):
-        ref = match.group(0)
-        absolute_col = ref.startswith('$')
-        parts = ref.split('$')
+    """Shift cell references in ``formula`` by the given offsets.
 
-        if len(parts) == 3:  # $A$1
-            return ref
-        elif len(parts) == 2:  # $A1 or A$1
-            if absolute_col:
-                col_part = parts[1][0]
-                row_part = parts[1][1:]
-                row_num = int(row_part) + row_offset
-                return f"${col_part}{row_num}"
-            else:
-                col_part = parts[0][0]
-                row_part = parts[1]
-                return f"{col_part}${row_part}"
-        else:  # A1
-            col_part = re.match(r'[A-Z]+', ref).group(0)
-            row_part = re.match(r'\d+$', ref).group(0)
-            row_num = int(row_part) + row_offset
-            # Simple column offset not implemented for brevity
-            return f"{col_part}{row_num}"
+    This util relies on :class:`openpyxl.formula.translate.Translator` which
+    mimics Excel's behaviour when copying formulas. By using ``A1`` as the
+    origin cell and offsetting to the destination cell, relative references are
+    adjusted while absolute references remain intact. Cross-sheet references are
+    also handled by ``Translator``.
+    """
 
-    pattern = r'(\$?[A-Z]+\$?\d+)'
-    return re.sub(pattern, replace_ref, formula)
+    try:
+        origin = "A1"
+        dest_col = 1 + col_offset
+        dest_row = 1 + row_offset
+        dest = f"{get_column_letter(dest_col)}{dest_row}"
+        return Translator(formula, origin=origin).translate_formula(dest)
+    except Exception:
+        # If translation fails for any reason, return the original formula
+        return formula
