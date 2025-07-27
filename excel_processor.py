@@ -6,7 +6,7 @@ from excel_com import ExcelCOM
 from config import Config
 from logger import get_logger
 from validator import ExcelValidator
-from utils import generate_unique_filename, parse_excel_address
+from utils import generate_unique_filename, parse_excel_address, adjust_formula_references
 
 
 class ExcelProcessor:
@@ -331,8 +331,10 @@ class ExcelProcessor:
             for j, cell_data in enumerate(stored_block['data']):
                 cell = sheet.Cells(current_row, header_start_col + j)
                 if cell_data['formula']:
-                    cell.Formula = cell_data['formula']
-                    self.logger.debug(f"Cell {cell.Address}: Formula='{cell_data['formula']}'")
+                    offset = current_row - original_data_row_in_blocks
+                    adj_formula = adjust_formula_references(cell_data['formula'], offset, 0)
+                    cell.Formula = adj_formula
+                    self.logger.debug(f"Cell {cell.Address}: Formula='{adj_formula}'")
                 else:
                     cell.Value = cell_data['value']
                     self.logger.debug(f"Cell {cell.Address}: Value='{cell_data['value']}'")
@@ -349,7 +351,9 @@ class ExcelProcessor:
                 for j, cell_data in enumerate(stored_block['formulas']):
                     cell = sheet.Cells(current_row, header_start_col + j)
                     if cell_data['formula']:
-                        cell.Formula = cell_data['formula']
+                        offset = current_row - original_formula_row
+                        adj_formula = adjust_formula_references(cell_data['formula'], offset, 0)
+                        cell.Formula = adj_formula
                     else:
                         cell.Value = cell_data['value']
                     self._apply_cell_format(cell, cell_data['format'])
@@ -365,7 +369,9 @@ class ExcelProcessor:
             for j, cell_data in enumerate(stored_block['data']):
                 cell = sheet.Cells(current_row, header_start_col + j)
                 if cell_data['formula']:
-                    cell.Formula = cell_data['formula']
+                    offset = current_row - original_data_row_in_blocks
+                    adj_formula = adjust_formula_references(cell_data['formula'], offset, 0)
+                    cell.Formula = adj_formula
                 else:
                     cell.Value = cell_data['value']
                 self._apply_cell_format(cell, cell_data['format'])
@@ -380,7 +386,9 @@ class ExcelProcessor:
                 for j, cell_data in enumerate(stored_block['formulas']):
                     cell = sheet.Cells(current_row, header_start_col + j)
                     if cell_data['formula']:
-                        cell.Formula = cell_data['formula']
+                        offset = current_row - original_formula_row
+                        adj_formula = adjust_formula_references(cell_data['formula'], offset, 0)
+                        cell.Formula = adj_formula
                     else:
                         cell.Value = cell_data['value']
                     self._apply_cell_format(cell, cell_data['format'])
