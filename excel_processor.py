@@ -6,7 +6,7 @@ from excel_com import ExcelCOM
 from config import Config
 from logger import get_logger
 from validator import ExcelValidator
-from utils import generate_unique_filename, parse_excel_address
+from utils import generate_unique_filename, parse_excel_address, adjust_formula_references
 
 
 class ExcelProcessor:
@@ -188,6 +188,19 @@ class ExcelProcessor:
 
         return -1
 
+    def _write_row(self, sheet, target_row, cells_data, header_start_col, source_row):
+        """Write cells to target_row preserving formulas with adjusted references"""
+        row_offset = target_row - source_row
+        for j, cell_data in enumerate(cells_data):
+            cell = sheet.Cells(target_row, header_start_col + j)
+            if cell_data['formula']:
+                formula = adjust_formula_references(
+                    cell_data['formula'], row_offset, 0)
+                cell.Formula = formula
+            else:
+                cell.Value = cell_data['value']
+            self._apply_cell_format(cell, cell_data['format'])
+
     def _restructure_sheet(self, sheet, header_range):
         header_row = header_range.Row
         header_start_col = header_range.Column
@@ -263,9 +276,14 @@ class ExcelProcessor:
         header_row_height = sheet.Rows(header_row).RowHeight
 
         for block in data_blocks:
-            stored_data = {'data': [], 'formulas': None, 'shapes': [], 'formula_shapes': [],
-                           'data_row_height': sheet.Rows(block['data_row']).RowHeight,
-                           'original_row': block['data_row']}
+            stored_data = {
+                'data': [],
+                'formulas': None,
+                'shapes': [],
+                'formula_shapes': [],
+                'data_row_height': sheet.Rows(block['data_row']).RowHeight,
+                'original_row': block['data_row'],
+            }
 
             # Store data row
             for col in range(header_start_col, header_end_col + 1):
@@ -282,6 +300,7 @@ class ExcelProcessor:
             # Store formula row if exists
             if 'formula_row' in block:
                 stored_data['formula_row_height'] = sheet.Rows(block['formula_row']).RowHeight
+                stored_data['original_formula_row'] = block['formula_row']
                 stored_data['formulas'] = []
                 for col in range(header_start_col, header_end_col + 1):
                     cell = sheet.Cells(block['formula_row'], col)
@@ -328,15 +347,8 @@ class ExcelProcessor:
             original_data_row_in_blocks = stored_block.get('original_row', data_blocks[i]['data_row'])
             self.logger.debug(f"Writing data row to row {current_row}")
             sheet.Rows(current_row).RowHeight = stored_block['data_row_height']
-            for j, cell_data in enumerate(stored_block['data']):
-                cell = sheet.Cells(current_row, header_start_col + j)
-                if cell_data['formula']:
-                    cell.Formula = cell_data['formula']
-                    self.logger.debug(f"Cell {cell.Address}: Formula='{cell_data['formula']}'")
-                else:
-                    cell.Value = cell_data['value']
-                    self.logger.debug(f"Cell {cell.Address}: Value='{cell_data['value']}'")
-                self._apply_cell_format(cell, cell_data['format'])
+            self._write_row(sheet, current_row, stored_block['data'],
+                            header_start_col, original_data_row_in_blocks)
 
             # Copy shapes to data row
             self._copy_shapes_for_row(all_shapes, sheet, original_data_row_in_blocks, current_row)
@@ -344,15 +356,11 @@ class ExcelProcessor:
 
             # Original formula row if exists
             if stored_block['formulas']:
-                original_formula_row = data_blocks[i].get('formula_row')
+                original_formula_row = stored_block.get(
+                    'original_formula_row', data_blocks[i].get('formula_row'))
                 sheet.Rows(current_row).RowHeight = stored_block.get('formula_row_height', 15)
-                for j, cell_data in enumerate(stored_block['formulas']):
-                    cell = sheet.Cells(current_row, header_start_col + j)
-                    if cell_data['formula']:
-                        cell.Formula = cell_data['formula']
-                    else:
-                        cell.Value = cell_data['value']
-                    self._apply_cell_format(cell, cell_data['format'])
+                self._write_row(sheet, current_row, stored_block['formulas'],
+                                header_start_col, original_formula_row or current_row)
 
                 # Copy shapes to formula row
                 if original_formula_row:
@@ -362,13 +370,8 @@ class ExcelProcessor:
             # Duplicate data row
             duplicate_data_row = current_row
             sheet.Rows(current_row).RowHeight = stored_block['data_row_height']
-            for j, cell_data in enumerate(stored_block['data']):
-                cell = sheet.Cells(current_row, header_start_col + j)
-                if cell_data['formula']:
-                    cell.Formula = cell_data['formula']
-                else:
-                    cell.Value = cell_data['value']
-                self._apply_cell_format(cell, cell_data['format'])
+            self._write_row(sheet, current_row, stored_block['data'],
+                            header_start_col, original_data_row_in_blocks)
 
             # Copy shapes to duplicate data row
             self._copy_shapes_for_row(all_shapes, sheet, original_data_row_in_blocks, current_row)
@@ -377,13 +380,8 @@ class ExcelProcessor:
             # Duplicate formula row if exists
             if stored_block['formulas']:
                 sheet.Rows(current_row).RowHeight = stored_block.get('formula_row_height', 15)
-                for j, cell_data in enumerate(stored_block['formulas']):
-                    cell = sheet.Cells(current_row, header_start_col + j)
-                    if cell_data['formula']:
-                        cell.Formula = cell_data['formula']
-                    else:
-                        cell.Value = cell_data['value']
-                    self._apply_cell_format(cell, cell_data['format'])
+                self._write_row(sheet, current_row, stored_block['formulas'],
+                                header_start_col, original_formula_row or current_row)
 
                 # Copy shapes to duplicate formula row
                 if original_formula_row:
