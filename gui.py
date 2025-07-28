@@ -1,13 +1,11 @@
 # gui.py
-import os
-import webbrowser
 from pathlib import Path
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QListWidget, QTextEdit, QLabel,
                                QSpinBox, QProgressBar, QFileDialog, QFrame,
-                               QListWidgetItem, QGroupBox, QMenuBar, QMenu,
+                               QListWidgetItem, QGroupBox,
                                QMessageBox)
-from PySide6.QtCore import Qt, QThread, Signal, Slot, QUrl
+from PySide6.QtCore import Qt, QThread, Signal, Slot, QUrl, QTimer
 from PySide6.QtGui import (QDragEnterEvent, QDropEvent, QAction, QDesktopServices)
 from excel_processor import ExcelProcessor
 from config import Config
@@ -164,6 +162,9 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(MAIN_STYLE)
 
         self.create_menu()
+
+        # Check for updates on startup
+        QTimer.singleShot(1000, lambda: self.updater.check_for_updates(silent=True))
 
         central = QWidget()
         self.setCentralWidget(central)
