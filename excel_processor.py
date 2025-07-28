@@ -150,6 +150,19 @@ class ExcelProcessor:
             insert_row = block['end_row'] + 1
             sheet.Rows(insert_row).Insert(Shift=-4121)
 
+            # Fix formulas in duplicated rows
+            for row_offset in range(block['end_row'] - block['start_row'] + 1):
+                source_row = block['start_row'] + row_offset
+                dup_row = insert_row + row_offset
+
+                for col in range(header_start_col, header_end_col + 1):
+                    source_cell = sheet.Cells(source_row, col)
+                    dup_cell = sheet.Cells(dup_row, col)
+
+                    if source_cell.HasFormula:
+                        # Copy the exact formula from source
+                        dup_cell.Formula = source_cell.Formula
+
             # Add empty row after duplicate
             empty_row = block['end_row'] + (block['end_row'] - block['start_row'] + 1) + 1
             sheet.Rows(empty_row).Insert(Shift=-4121)
