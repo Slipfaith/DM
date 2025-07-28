@@ -23,6 +23,8 @@ venv/
 *.tmp
 *.bak
 *.swp
+*.zip
+*.txt
 session.json
 settings.json
 
