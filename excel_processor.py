@@ -1,5 +1,6 @@
 # excel_processor.py
 import os
+import re
 from pathlib import Path
 import shutil
 from excel_com import ExcelCOM
@@ -160,8 +161,18 @@ class ExcelProcessor:
                     dup_cell = sheet.Cells(dup_row, col)
 
                     if source_cell.HasFormula:
-                        # Copy the exact formula from source
-                        dup_cell.Formula = source_cell.Formula
+                        formula = source_cell.Formula
+                        # Fix LEN/ДЛСТР formulas to reference cell above
+                        if "LEN(" in formula.upper() or "ДЛСТР(" in formula.upper():
+                            col_letter = sheet.Cells(1, col).Address.split("$")[1]
+                            above_row = dup_row - 1
+                            formula = re.sub(
+                                r'(LEN|ДЛСТР)\s*\([^)]+\)',
+                                rf'\1({col_letter}{above_row})',
+                                formula,
+                                flags=re.IGNORECASE
+                            )
+                        dup_cell.Formula = formula
 
             # Add empty row after duplicate
             empty_row = block['end_row'] + (block['end_row'] - block['start_row'] + 1) + 1

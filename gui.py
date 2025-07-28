@@ -1,16 +1,18 @@
 # gui.py
 import os
+import webbrowser
 from pathlib import Path
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QListWidget, QTextEdit, QLabel,
                                QSpinBox, QProgressBar, QFileDialog, QFrame,
-                               QCheckBox, QListWidgetItem, QAbstractItemView)
-from PySide6.QtCore import Qt, QThread, Signal, Slot, QPropertyAnimation, QRect
-from PySide6.QtGui import (QDragEnterEvent, QDropEvent, QPalette, QColor,
-                           QFont, QIcon, QPainter, QBrush, QPen)
+                               QListWidgetItem, QGroupBox, QMenuBar, QMenu,
+                               QMessageBox)
+from PySide6.QtCore import Qt, QThread, Signal, Slot, QUrl
+from PySide6.QtGui import (QDragEnterEvent, QDropEvent, QAction, QDesktopServices)
 from excel_processor import ExcelProcessor
 from config import Config
 from logger import setup_logger
+from styles import MAIN_STYLE
 
 
 class DragDropArea(QFrame):
@@ -19,40 +21,18 @@ class DragDropArea(QFrame):
     def __init__(self):
         super().__init__()
         self.setAcceptDrops(True)
-        self.setFrameStyle(QFrame.StyledPanel)
-        self.setStyleSheet("""
-            QFrame {
-                border: 2px dashed #3498db;
-                border-radius: 10px;
-                background-color: #f8f9fa;
-            }
-            QFrame:hover {
-                background-color: #e3f2fd;
-                border-color: #2196f3;
-            }
-        """)
-        self.setMinimumHeight(120)
+        self.setObjectName("dragDropArea")
         self.setCursor(Qt.PointingHandCursor)
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignCenter)
+        layout.setSpacing(20)
 
-        self.icon_label = QLabel("📁")
-        self.icon_label.setStyleSheet("font-size: 32px;")
-        self.icon_label.setAlignment(Qt.AlignCenter)
-
-        self.text_label = QLabel("Drop Excel files here or click to browse")
-        self.text_label.setStyleSheet("color: #666; font-size: 14px;")
+        self.text_label = QLabel("Drag & Drop Excel Files Here\nor Click to Browse")
+        self.text_label.setObjectName("dragDropText")
         self.text_label.setAlignment(Qt.AlignCenter)
 
-        self.count_label = QLabel("")
-        self.count_label.setStyleSheet("color: #2196f3; font-size: 12px; font-weight: bold;")
-        self.count_label.setAlignment(Qt.AlignCenter)
-        self.count_label.hide()
-
-        layout.addWidget(self.icon_label)
         layout.addWidget(self.text_label)
-        layout.addWidget(self.count_label)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -68,26 +48,14 @@ class DragDropArea(QFrame):
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
-            self.setStyleSheet("""
-                QFrame {
-                    border: 2px solid #2196f3;
-                    border-radius: 10px;
-                    background-color: #e3f2fd;
-                }
-            """)
+            self.setProperty("dragActive", True)
+            self.style().unpolish(self)
+            self.style().polish(self)
 
     def dragLeaveEvent(self, event):
-        self.setStyleSheet("""
-            QFrame {
-                border: 2px dashed #3498db;
-                border-radius: 10px;
-                background-color: #f8f9fa;
-            }
-            QFrame:hover {
-                background-color: #e3f2fd;
-                border-color: #2196f3;
-            }
-        """)
+        self.setProperty("dragActive", False)
+        self.style().unpolish(self)
+        self.style().polish(self)
 
     def dropEvent(self, event: QDropEvent):
         if event.mimeData().hasUrls():
@@ -101,60 +69,49 @@ class DragDropArea(QFrame):
                 self.filesDropped.emit(files)
         self.dragLeaveEvent(event)
 
-    def updateFileCount(self, count):
-        if count > 0:
-            self.count_label.setText(f"{count} file{'s' if count > 1 else ''} selected")
-            self.count_label.show()
-            self.text_label.setText("Drop more files or click to add")
-        else:
-            self.count_label.hide()
-            self.text_label.setText("Drop Excel files here or click to browse")
-
 
 class FileListWidget(QListWidget):
     def __init__(self):
         super().__init__()
-        self.setStyleSheet("""
-            QListWidget {
-                border: 1px solid #ddd;
-                border-radius: 5px;
-                background-color: white;
-                padding: 5px;
-            }
-            QListWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #f0f0f0;
-            }
-            QListWidget::item:hover {
-                background-color: #f5f5f5;
-            }
-            QListWidget::item:selected {
-                background-color: #e3f2fd;
-                color: #1976d2;
-            }
-        """)
-        self.setMaximumHeight(150)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setObjectName("fileList")
 
 
 class ProcessorThread(QThread):
     progress = Signal(int)
     log_message = Signal(str)
     finished = Signal(dict)
+    file_processing = Signal(str)
     sheet_progress = Signal(int, int)
 
     def __init__(self, files, config):
         super().__init__()
         self.files = files
         self.config = config
+        self.total_sheets = 0
+        self.processed_sheets = 0
+
+    def count_sheets(self):
+        from excel_com import ExcelCOM
+        total = 0
+        with ExcelCOM() as excel:
+            for file in self.files:
+                try:
+                    wb = excel.open_workbook(file)
+                    total += wb.Sheets.Count
+                    wb.Close(False)
+                except:
+                    pass
+        return total
 
     def run(self):
-        results = {"success": 0, "failed": 0}
-        total_files = len(self.files)
+        results = {"success": 0, "failed": 0, "output_folder": None}
 
-        for i, file in enumerate(self.files):
+        self.total_sheets = self.count_sheets()
+        self.sheet_progress.emit(0, self.total_sheets)
+
+        for file in self.files:
             try:
-                self.log_message.emit(f"Processing: {Path(file).name}")
+                self.file_processing.emit(Path(file).name)
                 processor = ExcelProcessor(self.config)
 
                 import logging
@@ -166,6 +123,11 @@ class ProcessorThread(QThread):
                     def emit(self, record):
                         msg = self.format(record)
                         self.thread.log_message.emit(msg)
+                        if "Sheet" in msg and "Done." in msg:
+                            self.thread.processed_sheets += 1
+                            progress = int((self.thread.processed_sheets / self.thread.total_sheets) * 100)
+                            self.thread.progress.emit(progress)
+                            self.thread.sheet_progress.emit(self.thread.processed_sheets, self.thread.total_sheets)
 
                 gui_handler = GuiLogHandler(self)
                 gui_handler.setFormatter(logging.Formatter('%(message)s'))
@@ -174,11 +136,14 @@ class ProcessorThread(QThread):
                 processor.process_file(file)
                 results["success"] += 1
 
+                if not results["output_folder"]:
+                    output_folder = Path(file).parent / "Deeva"
+                    if output_folder.exists():
+                        results["output_folder"] = str(output_folder)
+
             except Exception as e:
                 self.log_message.emit(f"Error in {Path(file).name}: {str(e)}")
                 results["failed"] += 1
-
-            self.progress.emit(int((i + 1) / total_files * 100))
 
         self.finished.emit(results)
 
@@ -193,140 +158,142 @@ class MainWindow(QMainWindow):
 
     def init_ui(self):
         self.setWindowTitle("Excel Processor")
-        self.setFixedSize(450, 550)
+        self.setFixedSize(400, 300)
+        self.setStyleSheet(MAIN_STYLE)
 
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #f5f5f5;
-            }
-            QPushButton {
-                background-color: #2196f3;
-                color: white;
-                border: none;
-                padding: 10px 20px;
-                border-radius: 5px;
-                font-weight: bold;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #1976d2;
-            }
-            QPushButton:pressed {
-                background-color: #0d47a1;
-            }
-            QPushButton:disabled {
-                background-color: #ccc;
-                color: #666;
-            }
-            QLabel {
-                color: #333;
-            }
-            QProgressBar {
-                border: 1px solid #ddd;
-                border-radius: 5px;
-                text-align: center;
-                background-color: white;
-            }
-            QProgressBar::chunk {
-                background-color: #4caf50;
-                border-radius: 4px;
-            }
-        """)
+        self.create_menu()
 
         central = QWidget()
         self.setCentralWidget(central)
-        layout = QVBoxLayout(central)
-        layout.setSpacing(15)
-        layout.setContentsMargins(20, 20, 20, 20)
-
-        title = QLabel("Excel Processor")
-        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #1976d2;")
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
+        main_layout = QVBoxLayout(central)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
         self.drop_area = DragDropArea()
         self.drop_area.filesDropped.connect(self.add_files)
-        layout.addWidget(self.drop_area)
+        main_layout.addWidget(self.drop_area)
 
-        self.file_list = FileListWidget()
-        self.file_list.hide()
-        layout.addWidget(self.file_list)
+        content_widget = QWidget()
+        content_widget.setObjectName("contentWidget")
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(20, 20, 20, 20)
+        content_layout.setSpacing(15)
 
-        settings_frame = QFrame()
-        settings_frame.setStyleSheet("""
-            QFrame {
-                background-color: white;
-                border-radius: 5px;
-                padding: 10px;
-            }
-        """)
-        settings_layout = QHBoxLayout(settings_frame)
+        lists_container = QWidget()
+        lists_layout = QHBoxLayout(lists_container)
+        lists_layout.setSpacing(20)
+
+        loaded_group = QGroupBox("Loaded Files")
+        loaded_group.setObjectName("fileGroup")
+        loaded_layout = QVBoxLayout(loaded_group)
+        self.loaded_list = FileListWidget()
+        loaded_layout.addWidget(self.loaded_list)
+
+        processed_group = QGroupBox("Processed Files")
+        processed_group.setObjectName("fileGroup")
+        processed_layout = QVBoxLayout(processed_group)
+        self.processed_list = FileListWidget()
+        self.processed_list.setEnabled(False)
+        processed_layout.addWidget(self.processed_list)
+
+        lists_layout.addWidget(loaded_group)
+        lists_layout.addWidget(processed_group)
+
+        content_layout.addWidget(lists_container)
+
+        self.status_label = QLabel("Ready")
+        self.status_label.setObjectName("statusLabel")
+        content_layout.addWidget(self.status_label)
+
+        progress_container = QWidget()
+        progress_layout = QVBoxLayout(progress_container)
+        progress_layout.setSpacing(5)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setObjectName("progressBar")
+        progress_layout.addWidget(self.progress_bar)
+
+        self.progress_label = QLabel("")
+        self.progress_label.setObjectName("progressLabel")
+        self.progress_label.setAlignment(Qt.AlignCenter)
+        progress_layout.addWidget(self.progress_label)
+
+        progress_container.hide()
+        self.progress_container = progress_container
+        content_layout.addWidget(progress_container)
+
+        buttons_layout = QHBoxLayout()
+        buttons_layout.setSpacing(10)
+
+        settings_widget = QWidget()
+        settings_layout = QHBoxLayout(settings_widget)
+        settings_layout.setContentsMargins(0, 0, 0, 0)
 
         settings_layout.addWidget(QLabel("Header Color:"))
         self.color_input = QSpinBox()
+        self.color_input.setObjectName("colorInput")
         self.color_input.setRange(0, 16777215)
         self.color_input.setValue(65535)
-        self.color_input.setStyleSheet("""
-            QSpinBox {
-                padding: 5px;
-                border: 1px solid #ddd;
-                border-radius: 3px;
-            }
-        """)
         settings_layout.addWidget(self.color_input)
 
-        settings_layout.addStretch()
-
-        self.dry_run_check = QCheckBox("Dry Run")
-        self.dry_run_check.setStyleSheet("QCheckBox { color: #666; }")
-        settings_layout.addWidget(self.dry_run_check)
-
-        layout.addWidget(settings_frame)
-
-        btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(10)
+        buttons_layout.addWidget(settings_widget)
+        buttons_layout.addStretch()
 
         self.clear_btn = QPushButton("Clear Files")
+        self.clear_btn.setObjectName("clearButton")
         self.clear_btn.clicked.connect(self.clear_files)
-        self.clear_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f44336;
-            }
-            QPushButton:hover {
-                background-color: #d32f2f;
-            }
-        """)
-        self.clear_btn.hide()
 
         self.process_btn = QPushButton("Process Files")
+        self.process_btn.setObjectName("processButton")
         self.process_btn.clicked.connect(self.process_files)
         self.process_btn.setEnabled(False)
 
-        btn_layout.addWidget(self.clear_btn)
-        btn_layout.addWidget(self.process_btn)
-        layout.addLayout(btn_layout)
+        buttons_layout.addWidget(self.clear_btn)
+        buttons_layout.addWidget(self.process_btn)
 
-        self.progress_bar = QProgressBar()
-        self.progress_bar.hide()
-        layout.addWidget(self.progress_bar)
+        content_layout.addLayout(buttons_layout)
 
         self.log_text = QTextEdit()
+        self.log_text.setObjectName("logText")
         self.log_text.setReadOnly(True)
-        self.log_text.setMaximumHeight(120)
-        self.log_text.setStyleSheet("""
-            QTextEdit {
-                border: 1px solid #ddd;
-                border-radius: 5px;
-                background-color: white;
-                padding: 5px;
-                font-family: monospace;
-                font-size: 12px;
-            }
-        """)
-        self.log_text.hide()
-        layout.addWidget(self.log_text)
+        content_layout.addWidget(self.log_text)
 
-        layout.addStretch()
+        self.summary_label = QLabel("")
+        self.summary_label.setObjectName("summaryLabel")
+        self.summary_label.setTextFormat(Qt.RichText)
+        self.summary_label.setOpenExternalLinks(False)
+        self.summary_label.linkActivated.connect(self.open_folder)
+        self.summary_label.hide()
+        content_layout.addWidget(self.summary_label)
+
+        content_widget.hide()
+        main_layout.addWidget(content_widget)
+        self.content_widget = content_widget
+
+    def create_menu(self):
+        menubar = self.menuBar()
+
+        file_menu = menubar.addMenu('File')
+
+        clear_action = QAction('Clear All', self)
+        clear_action.triggered.connect(self.clear_files)
+        file_menu.addAction(clear_action)
+
+        file_menu.addSeparator()
+
+        exit_action = QAction('Exit', self)
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+
+        help_menu = menubar.addMenu('Help')
+
+        update_action = QAction('Check for Updates', self)
+        update_action.triggered.connect(self.check_updates)
+        help_menu.addAction(update_action)
+
+        about_action = QAction('About', self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
 
     def add_files(self, new_files):
         for file in new_files:
@@ -334,48 +301,82 @@ class MainWindow(QMainWindow):
                 self.files.append(file)
                 item = QListWidgetItem(Path(file).name)
                 item.setToolTip(file)
-                self.file_list.addItem(item)
-
-        self.drop_area.updateFileCount(len(self.files))
+                self.loaded_list.addItem(item)
 
         if self.files:
-            self.file_list.show()
-            self.clear_btn.show()
+            self.drop_area.hide()
+            self.content_widget.show()
+            self.setFixedSize(800, 600)
             self.process_btn.setEnabled(True)
-            self.setFixedSize(450, 650)
+            self.status_label.setText(f"{len(self.files)} files loaded")
 
     def clear_files(self):
         self.files.clear()
-        self.file_list.clear()
-        self.file_list.hide()
-        self.clear_btn.hide()
+        self.loaded_list.clear()
+        self.processed_list.clear()
+        self.log_text.clear()
+        self.summary_label.hide()
+        self.progress_label.setText("")
+        self.drop_area.show()
+        self.content_widget.hide()
+        self.setFixedSize(400, 300)
         self.process_btn.setEnabled(False)
-        self.drop_area.updateFileCount(0)
-        self.log_text.hide()
-        self.setFixedSize(450, 550)
+        self.status_label.setText("Ready")
 
     def process_files(self):
         if not self.files:
             return
 
         self.config.header_color = self.color_input.value()
-        self.config.dry_run = self.dry_run_check.isChecked()
 
         self.process_btn.setEnabled(False)
         self.clear_btn.setEnabled(False)
-        self.progress_bar.show()
-        self.log_text.show()
-        self.log_text.clear()
+        self.progress_container.show()
         self.progress_bar.setValue(0)
+        self.processed_list.clear()
+        self.summary_label.hide()
 
         self.thread = ProcessorThread(self.files, self.config)
         self.thread.progress.connect(self.progress_bar.setValue)
         self.thread.log_message.connect(self.log_text.append)
         self.thread.finished.connect(self.on_process_finished)
+        self.thread.file_processing.connect(self.on_file_processing)
+        self.thread.sheet_progress.connect(self.on_sheet_progress)
         self.thread.start()
+
+    def on_file_processing(self, filename):
+        self.status_label.setText(f"Processing: {filename}")
+        item = QListWidgetItem(filename)
+        self.processed_list.addItem(item)
+
+    def on_sheet_progress(self, processed, total):
+        self.progress_label.setText(f"Sheets: {processed}/{total}")
 
     @Slot(dict)
     def on_process_finished(self, results):
         self.process_btn.setEnabled(True)
         self.clear_btn.setEnabled(True)
-        self.log_text.append(f"\n✓ Completed: {results['success']} success, {results['failed']} failed")
+        self.progress_container.hide()
+
+        total = results['success'] + results['failed']
+        summary = f"<b>Summary:</b><br>"
+        summary += f"Total files: {total}<br>"
+        summary += f"✓ Success: {results['success']}<br>"
+        summary += f"✗ Failed: {results['failed']}<br>"
+
+        if results['output_folder']:
+            summary += f"<br>Output folder: <a href='{results['output_folder']}'>Open Deeva folder</a>"
+
+        self.summary_label.setText(summary)
+        self.summary_label.show()
+
+        self.status_label.setText(f"Completed: {results['success']} success, {results['failed']} failed")
+
+    def open_folder(self, link):
+        QDesktopServices.openUrl(QUrl.fromLocalFile(link))
+
+    def check_updates(self):
+        webbrowser.open("https://github.com/yourusername/excel-processor/releases")
+
+    def show_about(self):
+        QMessageBox.about(self, "About", "Excel Processor v1.0\n\nA tool for duplicating Excel rows with headers")
