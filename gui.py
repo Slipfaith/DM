@@ -13,6 +13,7 @@ from excel_processor import ExcelProcessor
 from config import Config
 from logger import setup_logger
 from styles import MAIN_STYLE
+from updater import UpdateChecker, CURRENT_VERSION
 
 
 class DragDropArea(QFrame):
@@ -154,6 +155,7 @@ class MainWindow(QMainWindow):
         self.config = Config()
         self.logger = setup_logger()
         self.files = []
+        self.updater = UpdateChecker(self)
         self.init_ui()
 
     def init_ui(self):
@@ -376,7 +378,13 @@ class MainWindow(QMainWindow):
         QDesktopServices.openUrl(QUrl.fromLocalFile(link))
 
     def check_updates(self):
-        webbrowser.open("https://github.com/yourusername/excel-processor/releases")
+        self.updater.check_for_updates()
 
     def show_about(self):
-        QMessageBox.about(self, "About", "Excel Processor v1.0\n\nA tool for duplicating Excel rows with headers")
+        QMessageBox.about(
+            self,
+            "About",
+            f"Excel Processor v{CURRENT_VERSION}\n\n"
+            "A tool for duplicating Excel rows with headers\n\n"
+            "GitHub: https://github.com/Slipfaith/DM"
+        )
