@@ -219,11 +219,6 @@ class MainWindow(QMainWindow):
 
         self.setStyleSheet(MAIN_STYLE)
 
-        self.create_menu()
-
-        # Check for updates on startup
-        QTimer.singleShot(1000, lambda: self.updater.check_for_updates(silent=True))
-
         central = QWidget()
         self.setCentralWidget(central)
         main_layout = QVBoxLayout(central)
@@ -343,6 +338,13 @@ class MainWindow(QMainWindow):
         content_widget.hide()
         main_layout.addWidget(content_widget)
         self.content_widget = content_widget
+
+        # Create the menu after all widgets so translation strings can
+        # reference them without hitting missing attributes.
+        self.create_menu()
+
+        # Check for updates on startup
+        QTimer.singleShot(1000, lambda: self.updater.check_for_updates(silent=True))
 
     def create_menu(self):
         menubar = self.menuBar()
