@@ -9,6 +9,7 @@ import tempfile
 from packaging import version
 from PySide6.QtWidgets import QMessageBox, QProgressDialog
 from PySide6.QtCore import QThread, Signal, QTimer
+from translations import tr
 
 CURRENT_VERSION = "1.1.0"
 GITHUB_API_URL = "https://api.github.com/repos/Slipfaith/DM/releases/latest"
@@ -64,7 +65,7 @@ class UpdateChecker:
             latest_version = data.get('tag_name', '').lstrip('v')
             if not latest_version:
                 if not silent:
-                    self._show_error("Could not determine latest version")
+                    self._show_error(tr('could_not_determine'))
                 return
 
             if version.parse(latest_version) > version.parse(CURRENT_VERSION):
@@ -74,7 +75,7 @@ class UpdateChecker:
 
         except Exception as e:
             if not silent:
-                self._show_error(f"Error checking for updates: {str(e)}")
+                self._show_error(tr('error_checking_updates', error=str(e)))
 
     def _show_update_available(self, latest_version, release_data):
         exe_asset = None
@@ -84,16 +85,16 @@ class UpdateChecker:
                 break
 
         if not exe_asset:
-            self._show_error("No executable file found in the release")
+            self._show_error(tr('no_exe_error'))
             return
 
         msg = QMessageBox(self.parent)
-        msg.setWindowTitle("Update Available")
-        msg.setText(f"Version {latest_version} is available!")
+        msg.setWindowTitle(tr('update_available_title'))
+        msg.setText(tr('update_available_text', latest=latest_version))
         msg.setInformativeText(
-            f"Current version: {CURRENT_VERSION}\n"
-            f"New version: {latest_version}\n\n"
-            "Would you like to download and install it?"
+            f"{tr('current_version', version=CURRENT_VERSION)}\n"
+            f"{tr('new_version', version=latest_version)}\n\n"
+            f"{tr('update_prompt')}"
         )
         msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
 
@@ -105,12 +106,12 @@ class UpdateChecker:
         temp_file = os.path.join(tempfile.gettempdir(), asset['name'])
 
         self.progress_dialog = QProgressDialog(
-            "Downloading update...",
-            "Cancel",
+            tr('downloading_update'),
+            tr('cancel'),
             0, 100,
             self.parent
         )
-        self.progress_dialog.setWindowTitle("Updating")
+        self.progress_dialog.setWindowTitle(tr('updating'))
         self.progress_dialog.setAutoClose(False)
         self.progress_dialog.show()
 
@@ -125,12 +126,9 @@ class UpdateChecker:
         self.progress_dialog.close()
 
         msg = QMessageBox(self.parent)
-        msg.setWindowTitle("Update Downloaded")
-        msg.setText("Update downloaded successfully!")
-        msg.setInformativeText(
-            "The application will now close to install the update.\n"
-            "Please restart the application after installation."
-        )
+        msg.setWindowTitle(tr('update_downloaded_title'))
+        msg.setText(tr('update_downloaded_text'))
+        msg.setInformativeText(tr('update_restart_text'))
         msg.setStandardButtons(QMessageBox.Ok)
         msg.exec()
 
@@ -138,7 +136,7 @@ class UpdateChecker:
 
     def _on_download_error(self, error):
         self.progress_dialog.close()
-        self._show_error(f"Download failed: {error}")
+        self._show_error(tr('download_failed', error=error))
 
     def _install_update(self, new_exe_path):
         current_exe = sys.executable
@@ -177,18 +175,18 @@ except Exception as e:
 
             QTimer.singleShot(100, self.parent.close)
         else:
-            self._show_error("Auto-update only works with compiled exe files")
+            self._show_error(tr('auto_update_exe_only'))
 
     def _show_no_updates(self):
         QMessageBox.information(
             self.parent,
-            "No Updates",
-            f"You are using the latest version ({CURRENT_VERSION})"
+            tr('no_updates_title'),
+            tr('no_updates_text', version=CURRENT_VERSION)
         )
 
     def _show_error(self, error_message):
         QMessageBox.warning(
             self.parent,
-            "Update Check Failed",
+            tr('update_error_title'),
             error_message
         )

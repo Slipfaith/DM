@@ -8,12 +8,14 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QListWidgetItem, QGroupBox, QMenuBar, QMenu,
                                QMessageBox)
 from PySide6.QtCore import Qt, QThread, Signal, Slot, QUrl, QTimer
-from PySide6.QtGui import (QDragEnterEvent, QDropEvent, QAction, QDesktopServices, QIcon)
+from PySide6.QtGui import (QDragEnterEvent, QDropEvent, QAction, QActionGroup,
+                           QDesktopServices, QIcon)
 from excel_processor import ExcelProcessor
 from config import Config
 from logger import setup_logger
 from styles import MAIN_STYLE, ICON_PATH
 from updater import UpdateChecker, CURRENT_VERSION
+from translations import tr, set_language
 
 
 class DragDropArea(QFrame):
@@ -29,7 +31,7 @@ class DragDropArea(QFrame):
         layout.setAlignment(Qt.AlignCenter)
         layout.setSpacing(20)
 
-        self.text_label = QLabel("Drag & Drop Excel Files Here\nor Click to Browse")
+        self.text_label = QLabel(tr('drag_drop_text'))
         self.text_label.setObjectName("dragDropText")
         self.text_label.setAlignment(Qt.AlignCenter)
 
@@ -39,9 +41,9 @@ class DragDropArea(QFrame):
         if event.button() == Qt.LeftButton:
             files, _ = QFileDialog.getOpenFileNames(
                 self,
-                "Select Excel Files",
+                tr('select_excel_files'),
                 "",
-                "Excel Files (*.xlsx *.xlsm *.xls)"
+                tr('excel_files_filter')
             )
             if files:
                 self.filesDropped.emit(files)
@@ -209,7 +211,7 @@ class MainWindow(QMainWindow):
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle("Excel Processor")
+        self.setWindowTitle(tr('app_title'))
         self.setFixedSize(400, 300)
 
         if os.path.exists(ICON_PATH):
@@ -242,25 +244,25 @@ class MainWindow(QMainWindow):
         lists_layout = QHBoxLayout(lists_container)
         lists_layout.setSpacing(20)
 
-        loaded_group = QGroupBox("Loaded Files")
-        loaded_group.setObjectName("fileGroup")
-        loaded_layout = QVBoxLayout(loaded_group)
+        self.loaded_group = QGroupBox(tr('loaded_files'))
+        self.loaded_group.setObjectName("fileGroup")
+        loaded_layout = QVBoxLayout(self.loaded_group)
         self.loaded_list = FileListWidget()
         loaded_layout.addWidget(self.loaded_list)
 
-        processed_group = QGroupBox("Processed Files")
-        processed_group.setObjectName("fileGroup")
-        processed_layout = QVBoxLayout(processed_group)
+        self.processed_group = QGroupBox(tr('processed_files'))
+        self.processed_group.setObjectName("fileGroup")
+        processed_layout = QVBoxLayout(self.processed_group)
         self.processed_list = FileListWidget()
         self.processed_list.setEnabled(False)
         processed_layout.addWidget(self.processed_list)
 
-        lists_layout.addWidget(loaded_group)
-        lists_layout.addWidget(processed_group)
+        lists_layout.addWidget(self.loaded_group)
+        lists_layout.addWidget(self.processed_group)
 
         content_layout.addWidget(lists_container)
 
-        self.status_label = QLabel("Ready")
+        self.status_label = QLabel(tr('ready'))
         self.status_label.setObjectName("statusLabel")
         content_layout.addWidget(self.status_label)
 
@@ -288,7 +290,8 @@ class MainWindow(QMainWindow):
         settings_layout = QHBoxLayout(settings_widget)
         settings_layout.setContentsMargins(0, 0, 0, 0)
 
-        settings_layout.addWidget(QLabel("Header Color:"))
+        self.header_color_label = QLabel(tr('header_color'))
+        settings_layout.addWidget(self.header_color_label)
         self.color_input = QSpinBox()
         self.color_input.setObjectName("colorInput")
         self.color_input.setRange(0, 16777215)
@@ -298,11 +301,11 @@ class MainWindow(QMainWindow):
         buttons_layout.addWidget(settings_widget)
         buttons_layout.addStretch()
 
-        self.clear_btn = QPushButton("Clear Files")
+        self.clear_btn = QPushButton(tr('clear_files'))
         self.clear_btn.setObjectName("clearButton")
         self.clear_btn.clicked.connect(self.clear_files)
 
-        self.process_btn = QPushButton("Process Files")
+        self.process_btn = QPushButton(tr('process_files'))
         self.process_btn.setObjectName("processButton")
         self.process_btn.clicked.connect(self.process_files)
         self.process_btn.setEnabled(False)
@@ -344,27 +347,69 @@ class MainWindow(QMainWindow):
     def create_menu(self):
         menubar = self.menuBar()
 
-        file_menu = menubar.addMenu('File')
+        self.file_menu = menubar.addMenu('')
 
-        clear_action = QAction('Clear All', self)
-        clear_action.triggered.connect(self.clear_files)
-        file_menu.addAction(clear_action)
+        self.clear_action = QAction('', self)
+        self.clear_action.triggered.connect(self.clear_files)
+        self.file_menu.addAction(self.clear_action)
 
-        file_menu.addSeparator()
+        self.file_menu.addSeparator()
 
-        exit_action = QAction('Exit', self)
-        exit_action.triggered.connect(self.close)
-        file_menu.addAction(exit_action)
+        self.exit_action = QAction('', self)
+        self.exit_action.triggered.connect(self.close)
+        self.file_menu.addAction(self.exit_action)
 
-        help_menu = menubar.addMenu('Help')
+        self.help_menu = menubar.addMenu('')
 
-        update_action = QAction('Check for Updates', self)
-        update_action.triggered.connect(self.check_updates)
-        help_menu.addAction(update_action)
+        self.update_action = QAction('', self)
+        self.update_action.triggered.connect(self.check_updates)
+        self.help_menu.addAction(self.update_action)
 
-        about_action = QAction('About', self)
-        about_action.triggered.connect(self.show_about)
-        help_menu.addAction(about_action)
+        self.about_action = QAction('', self)
+        self.about_action.triggered.connect(self.show_about)
+        self.help_menu.addAction(self.about_action)
+
+        # Language menu
+        self.language_menu = menubar.addMenu('')
+        lang_group = QActionGroup(self)
+        self.lang_en = QAction(tr('lang_en'), self, checkable=True)
+        self.lang_ru = QAction(tr('lang_ru'), self, checkable=True)
+        lang_group.addAction(self.lang_en)
+        lang_group.addAction(self.lang_ru)
+        self.lang_en.triggered.connect(lambda: self.set_language('en'))
+        self.lang_ru.triggered.connect(lambda: self.set_language('ru'))
+        self.language_menu.addAction(self.lang_en)
+        self.language_menu.addAction(self.lang_ru)
+
+        self.apply_translations()
+
+    def set_language(self, lang):
+        set_language(lang)
+        # keep actions checked
+        self.lang_en.setChecked(lang == 'en')
+        self.lang_ru.setChecked(lang == 'ru')
+        self.apply_translations()
+
+    def apply_translations(self):
+        self.setWindowTitle(tr('app_title'))
+        self.file_menu.setTitle(tr('menu_file'))
+        self.clear_action.setText(tr('menu_clear_all'))
+        self.exit_action.setText(tr('menu_exit'))
+        self.help_menu.setTitle(tr('menu_help'))
+        self.update_action.setText(tr('menu_check_updates'))
+        self.about_action.setText(tr('menu_about'))
+        self.language_menu.setTitle(tr('menu_language'))
+        self.lang_en.setText(tr('lang_en'))
+        self.lang_ru.setText(tr('lang_ru'))
+
+        self.drop_area.text_label.setText(tr('drag_drop_text'))
+        self.loaded_group.setTitle(tr('loaded_files'))
+        self.processed_group.setTitle(tr('processed_files'))
+        self.header_color_label.setText(tr('header_color'))
+        self.clear_btn.setText(tr('clear_files'))
+        self.process_btn.setText(tr('process_files'))
+        if not self.files:
+            self.status_label.setText(tr('ready'))
 
     def add_files(self, new_files):
         for file in new_files:
@@ -379,7 +424,7 @@ class MainWindow(QMainWindow):
             self.content_widget.show()
             self.setFixedSize(800, 600)
             self.process_btn.setEnabled(True)
-            self.status_label.setText(f"{len(self.files)} files loaded")
+            self.status_label.setText(tr('files_loaded', count=len(self.files)))
 
     def clear_files(self):
         self.files.clear()
@@ -392,7 +437,7 @@ class MainWindow(QMainWindow):
         self.content_widget.hide()
         self.setFixedSize(400, 300)
         self.process_btn.setEnabled(False)
-        self.status_label.setText("Ready")
+        self.status_label.setText(tr('ready'))
 
     def process_files(self):
         if not self.files:
@@ -422,35 +467,35 @@ class MainWindow(QMainWindow):
             if self.thread.is_paused:
                 self.thread.resume()
                 self.pause_btn.setText("⏸")
-                self.status_label.setText("Processing resumed...")
-                self.log_text.append(">>> Processing resumed")
+                self.status_label.setText(tr('processing_resumed'))
+                self.log_text.append(">>> " + tr('processing_resumed'))
             else:
                 self.thread.pause()
                 self.pause_btn.setText("▶")
-                self.status_label.setText("Processing paused")
-                self.log_text.append(">>> Processing paused")
+                self.status_label.setText(tr('stopping'))
+                self.log_text.append(">>> " + tr('stopping'))
 
     def stop_processing(self):
         if self.thread and self.thread.isRunning():
             reply = QMessageBox.question(
                 self,
-                "Stop Processing",
-                "Are you sure you want to stop processing?",
+                tr('stop_processing_title'),
+                tr('stop_processing_confirm'),
                 QMessageBox.Yes | QMessageBox.No
             )
 
             if reply == QMessageBox.Yes:
                 self.thread.stop()
-                self.status_label.setText("Stopping...")
-                self.log_text.append(">>> Stopping processing...")
+                self.status_label.setText(tr('processing_paused'))
+                self.log_text.append(">>> " + tr('processing_paused'))
 
     def on_file_processing(self, filename):
-        self.status_label.setText(f"Processing: {filename}")
+        self.status_label.setText(tr('processing', filename=filename))
         item = QListWidgetItem(filename)
         self.processed_list.addItem(item)
 
     def on_sheet_progress(self, processed, total):
-        self.progress_label.setText(f"Sheets: {processed}/{total}")
+        self.progress_label.setText(tr('sheets_progress', processed=processed, total=total))
 
     @Slot(dict)
     def on_process_finished(self, results):
@@ -461,23 +506,25 @@ class MainWindow(QMainWindow):
         self.progress_container.hide()
 
         total = results['success'] + results['failed']
-        summary = f"<b>Summary:</b><br>"
-        summary += f"Total files: {total}<br>"
-        summary += f"✓ Success: {results['success']}<br>"
-        summary += f"✗ Failed: {results['failed']}<br>"
+        summary = tr('summary')
+        summary += tr('total_files', total=total)
+        summary += tr('success', count=results['success'])
+        summary += tr('failed', count=results['failed'])
 
         if results['output_folder']:
-            summary += f"<br>Output folder: <a href='{results['output_folder']}'>Open Deeva folder</a>"
+            summary += tr('output_folder', folder=results['output_folder'])
 
         self.summary_label.setText(summary)
         self.summary_label.show()
 
         if hasattr(self.thread, 'should_stop') and self.thread.should_stop:
-            self.status_label.setText("Processing stopped by user")
-            self.log_text.append(">>> Processing stopped")
+            self.status_label.setText(tr('processing_stopped'))
+            self.log_text.append(">>> " + tr('processing_stopped'))
         else:
-            self.status_label.setText(f"Completed: {results['success']} success, {results['failed']} failed")
-            self.log_text.append(">>> Processing completed")
+            self.status_label.setText(
+                tr('completed', success=results['success'], failed=results['failed'])
+            )
+            self.log_text.append(">>> " + tr('completed', success=results['success'], failed=results['failed']))
 
     def open_folder(self, link):
         QDesktopServices.openUrl(QUrl.fromLocalFile(link))
@@ -488,8 +535,6 @@ class MainWindow(QMainWindow):
     def show_about(self):
         QMessageBox.about(
             self,
-            "About",
-            f"Excel Processor v{CURRENT_VERSION}\n\n"
-            "A tool for duplicating Excel rows with headers\n\n"
-            "GitHub: https://github.com/Slipfaith/DM"
+            tr('about_title'),
+            tr('about_text', version=CURRENT_VERSION)
         )
