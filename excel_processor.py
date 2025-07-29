@@ -1,11 +1,13 @@
 # excel_processor.py
+import os
 import re
 from pathlib import Path
 import shutil
 from excel_com import ExcelCOM
 from config import Config
 from logger import get_logger
-
+from validator import ExcelValidator
+from utils import generate_unique_filename, parse_excel_address, adjust_formula_references
 
 
 class ExcelProcessor:
@@ -31,6 +33,12 @@ class ExcelProcessor:
                 total_sheets = wb.Sheets.Count
 
                 for sheet_index, sheet in enumerate(wb.Sheets, 1):
+                    # Check for pause/stop before each sheet
+                    if hasattr(self, '_pause_stop_checker') and self._pause_stop_checker:
+                        if not self._pause_stop_checker():
+                            wb.Close(False)
+                            raise Exception("Processing stopped by user")
+
                     sheet_name = sheet.Name
                     self.logger.info(
                         f"Excel {source_path.name} - Sheet {sheet_index}/{total_sheets} '{sheet_name}' - searching for header...")

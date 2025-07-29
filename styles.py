@@ -1,9 +1,18 @@
+# styles.py
+import os
+from pathlib import Path
+
+def get_icon_path():
+    if hasattr(os, '_MEIPASS'):
+        return os.path.join(os._MEIPASS, 'icon.ico')
+    else:
+        return 'icon.ico'
+
+ICON_PATH = get_icon_path()
+
 MAIN_STYLE = """
-QFrame#DropArea {
-    border: 2px dashed #cccccc;
-    border-radius: 10px;
-    padding: 20px;
-    background-color: #f9f9f9;
+QMainWindow {
+    background-color: #f5f5f5;
 }
 
 #dragDropArea {
@@ -130,6 +139,44 @@ QFrame#DropArea {
 #clearButton:disabled {
     background-color: #cccccc;
     color: #666666;
+}
+
+#pauseButton {
+    background-color: #e0e0e0;
+    color: #666666;
+    border: 1px solid #cccccc;
+    padding: 6px 12px;
+    border-radius: 3px;
+    font-size: 14px;
+    min-width: 40px;
+}
+
+#pauseButton:hover {
+    background-color: #d5d5d5;
+    border-color: #999999;
+}
+
+#pauseButton:pressed {
+    background-color: #cccccc;
+}
+
+#stopButton {
+    background-color: #e0e0e0;
+    color: #666666;
+    border: 1px solid #cccccc;
+    padding: 6px 12px;
+    border-radius: 3px;
+    font-size: 14px;
+    min-width: 40px;
+}
+
+#stopButton:hover {
+    background-color: #d5d5d5;
+    border-color: #999999;
+}
+
+#stopButton:pressed {
+    background-color: #cccccc;
 }
 
 #colorInput {

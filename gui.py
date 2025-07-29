@@ -1,16 +1,18 @@
 # gui.py
+import os
+import webbrowser
 from pathlib import Path
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QListWidget, QTextEdit, QLabel,
                                QSpinBox, QProgressBar, QFileDialog, QFrame,
-                               QListWidgetItem, QGroupBox,
+                               QListWidgetItem, QGroupBox, QMenuBar, QMenu,
                                QMessageBox)
 from PySide6.QtCore import Qt, QThread, Signal, Slot, QUrl, QTimer
-from PySide6.QtGui import (QDragEnterEvent, QDropEvent, QAction, QDesktopServices)
+from PySide6.QtGui import (QDragEnterEvent, QDropEvent, QAction, QDesktopServices, QIcon)
 from excel_processor import ExcelProcessor
 from config import Config
 from logger import setup_logger
-from styles import MAIN_STYLE
+from styles import MAIN_STYLE, ICON_PATH
 from updater import UpdateChecker, CURRENT_VERSION
 
 
@@ -88,6 +90,23 @@ class ProcessorThread(QThread):
         self.config = config
         self.total_sheets = 0
         self.processed_sheets = 0
+        self.is_paused = False
+        self.should_stop = False
+        self.current_file_index = 0
+        self._pause_lock = False
+
+    def pause(self):
+        self.is_paused = True
+        self._pause_lock = True
+
+    def resume(self):
+        self.is_paused = False
+        self._pause_lock = False
+
+    def stop(self):
+        self.should_stop = True
+        self.is_paused = False
+        self._pause_lock = False
 
     def count_sheets(self):
         from excel_com import ExcelCOM
@@ -102,16 +121,39 @@ class ProcessorThread(QThread):
                     pass
         return total
 
+    def check_pause_stop(self):
+        if self.should_stop:
+            return False
+
+        while self.is_paused:
+            self.msleep(100)
+            if self.should_stop:
+                return False
+
+        return True
+
     def run(self):
         results = {"success": 0, "failed": 0, "output_folder": None}
 
         self.total_sheets = self.count_sheets()
         self.sheet_progress.emit(0, self.total_sheets)
 
-        for file in self.files:
+        for i in range(self.current_file_index, len(self.files)):
+            if not self.check_pause_stop():
+                break
+
+            file = self.files[i]
+            self.current_file_index = i
+
             try:
                 self.file_processing.emit(Path(file).name)
+
+                # Create a custom processor that checks for pause/stop
+                from excel_processor import ExcelProcessor
                 processor = ExcelProcessor(self.config)
+
+                # Inject pause/stop checker
+                processor._pause_stop_checker = self.check_pause_stop
 
                 import logging
                 class GuiLogHandler(logging.Handler):
@@ -122,11 +164,18 @@ class ProcessorThread(QThread):
                     def emit(self, record):
                         msg = self.format(record)
                         self.thread.log_message.emit(msg)
+
+                        # Check for sheet completion
                         if "Sheet" in msg and "Done." in msg:
                             self.thread.processed_sheets += 1
                             progress = int((self.thread.processed_sheets / self.thread.total_sheets) * 100)
                             self.thread.progress.emit(progress)
                             self.thread.sheet_progress.emit(self.thread.processed_sheets, self.thread.total_sheets)
+
+                        # Check pause/stop after each sheet
+                        if "searching for header" in msg or "Done." in msg:
+                            if not self.thread.check_pause_stop():
+                                raise Exception("Processing stopped by user")
 
                 gui_handler = GuiLogHandler(self)
                 gui_handler.setFormatter(logging.Formatter('%(message)s'))
@@ -141,8 +190,11 @@ class ProcessorThread(QThread):
                         results["output_folder"] = str(output_folder)
 
             except Exception as e:
-                self.log_message.emit(f"Error in {Path(file).name}: {str(e)}")
-                results["failed"] += 1
+                if "stopped by user" in str(e):
+                    break
+                else:
+                    self.log_message.emit(f"Error in {Path(file).name}: {str(e)}")
+                    results["failed"] += 1
 
         self.finished.emit(results)
 
@@ -159,6 +211,10 @@ class MainWindow(QMainWindow):
     def init_ui(self):
         self.setWindowTitle("Excel Processor")
         self.setFixedSize(400, 300)
+
+        if os.path.exists(ICON_PATH):
+            self.setWindowIcon(QIcon(ICON_PATH))
+
         self.setStyleSheet(MAIN_STYLE)
 
         self.create_menu()
@@ -251,6 +307,18 @@ class MainWindow(QMainWindow):
         self.process_btn.clicked.connect(self.process_files)
         self.process_btn.setEnabled(False)
 
+        self.pause_btn = QPushButton("⏸")
+        self.pause_btn.setObjectName("pauseButton")
+        self.pause_btn.clicked.connect(self.toggle_pause)
+        self.pause_btn.hide()
+
+        self.stop_btn = QPushButton("⏹")
+        self.stop_btn.setObjectName("stopButton")
+        self.stop_btn.clicked.connect(self.stop_processing)
+        self.stop_btn.hide()
+
+        buttons_layout.addWidget(self.pause_btn)
+        buttons_layout.addWidget(self.stop_btn)
         buttons_layout.addWidget(self.clear_btn)
         buttons_layout.addWidget(self.process_btn)
 
@@ -330,10 +398,12 @@ class MainWindow(QMainWindow):
         if not self.files:
             return
 
-        self.config.header_color = self.color_input.value()
+        self.config.header_color = 65535  # Default yellow
 
-        self.process_btn.setEnabled(False)
-        self.clear_btn.setEnabled(False)
+        self.process_btn.hide()
+        self.clear_btn.hide()
+        self.pause_btn.show()
+        self.stop_btn.show()
         self.progress_container.show()
         self.progress_bar.setValue(0)
         self.processed_list.clear()
@@ -347,6 +417,33 @@ class MainWindow(QMainWindow):
         self.thread.sheet_progress.connect(self.on_sheet_progress)
         self.thread.start()
 
+    def toggle_pause(self):
+        if self.thread and self.thread.isRunning():
+            if self.thread.is_paused:
+                self.thread.resume()
+                self.pause_btn.setText("⏸")
+                self.status_label.setText("Processing resumed...")
+                self.log_text.append(">>> Processing resumed")
+            else:
+                self.thread.pause()
+                self.pause_btn.setText("▶")
+                self.status_label.setText("Processing paused")
+                self.log_text.append(">>> Processing paused")
+
+    def stop_processing(self):
+        if self.thread and self.thread.isRunning():
+            reply = QMessageBox.question(
+                self,
+                "Stop Processing",
+                "Are you sure you want to stop processing?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+
+            if reply == QMessageBox.Yes:
+                self.thread.stop()
+                self.status_label.setText("Stopping...")
+                self.log_text.append(">>> Stopping processing...")
+
     def on_file_processing(self, filename):
         self.status_label.setText(f"Processing: {filename}")
         item = QListWidgetItem(filename)
@@ -357,8 +454,10 @@ class MainWindow(QMainWindow):
 
     @Slot(dict)
     def on_process_finished(self, results):
-        self.process_btn.setEnabled(True)
-        self.clear_btn.setEnabled(True)
+        self.process_btn.show()
+        self.clear_btn.show()
+        self.pause_btn.hide()
+        self.stop_btn.hide()
         self.progress_container.hide()
 
         total = results['success'] + results['failed']
@@ -373,7 +472,12 @@ class MainWindow(QMainWindow):
         self.summary_label.setText(summary)
         self.summary_label.show()
 
-        self.status_label.setText(f"Completed: {results['success']} success, {results['failed']} failed")
+        if hasattr(self.thread, 'should_stop') and self.thread.should_stop:
+            self.status_label.setText("Processing stopped by user")
+            self.log_text.append(">>> Processing stopped")
+        else:
+            self.status_label.setText(f"Completed: {results['success']} success, {results['failed']} failed")
+            self.log_text.append(">>> Processing completed")
 
     def open_folder(self, link):
         QDesktopServices.openUrl(QUrl.fromLocalFile(link))

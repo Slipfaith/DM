@@ -10,7 +10,7 @@ from packaging import version
 from PySide6.QtWidgets import QMessageBox, QProgressDialog
 from PySide6.QtCore import QThread, Signal, QTimer
 
-CURRENT_VERSION = "1.0.0"
+CURRENT_VERSION = "1.1.0"
 GITHUB_API_URL = "https://api.github.com/repos/Slipfaith/DM/releases/latest"
 
 
