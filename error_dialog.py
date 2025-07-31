@@ -9,9 +9,34 @@ from PySide6.QtGui import (QDragEnterEvent, QDropEvent, QKeySequence,
                            QBrush, QPen)
 from telegram import TelegramReporter
 from translations import tr
+
 from pathlib import Path
 import tempfile
 import os
+
+
+class ImagePreviewDialog(QDialog):
+    """Simple dialog to preview attached images."""
+
+    def __init__(self, image_path, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(tr('image_preview'))
+
+        layout = QVBoxLayout(self)
+        label = QLabel()
+        pixmap = QPixmap(image_path)
+        if not pixmap.isNull():
+            screen = QApplication.primaryScreen()
+            if screen:
+                screen_size = screen.availableGeometry().size()
+                max_width = min(600, screen_size.width())
+                max_height = min(600, screen_size.height())
+            else:
+                max_width = max_height = 600
+            scaled = pixmap.scaled(max_width, max_height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            label.setPixmap(scaled)
+        layout.addWidget(label)
+
 
 
 class ImageThumbnail(QLabel):
@@ -60,7 +85,12 @@ class ImageThumbnail(QLabel):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self.removed.emit(self.image_path)
+            # Top-right corner is used as remove button
+            if 45 <= event.pos().x() <= 60 and 0 <= event.pos().y() <= 15:
+                self.removed.emit(self.image_path)
+            else:
+                preview = ImagePreviewDialog(self.image_path, self)
+                preview.exec()
 
 
 class DragDropTextEdit(QTextEdit):
