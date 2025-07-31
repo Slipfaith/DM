@@ -289,6 +289,7 @@ class ErrorReportDialog(QDialog):
 
         self.send_btn = QPushButton("📤")  # Send icon
         self.send_btn.setObjectName("telegramButton")
+        self.send_btn.setFixedSize(44, 44)
         self.send_btn.clicked.connect(self.send_report)
 
         self.cancel_btn = QPushButton(tr('cancel'))
@@ -496,6 +497,7 @@ class FeedbackDialog(QDialog):
 
         self.send_btn = QPushButton("📤")  # Send icon
         self.send_btn.setObjectName("telegramButton")
+        self.send_btn.setFixedSize(44, 44)
         self.send_btn.clicked.connect(self.send_feedback)
 
         self.cancel_btn = QPushButton(tr('cancel'))
