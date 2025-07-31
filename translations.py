@@ -84,6 +84,7 @@ translations = {
         'attach_image': 'Attach Image',
         'select_images': 'Select Images',
         'info': 'Information',
+        'image_preview': 'Image Preview',
         'max_attachments': 'Maximum 5 attachments allowed',
         'images_attached': 'images'
     },
@@ -170,6 +171,7 @@ translations = {
         'attach_image': 'Прикрепить изображение',
         'select_images': 'Выберите изображения',
         'info': 'Информация',
+        'image_preview': 'Просмотр изображения',
         'max_attachments': 'Максимум 5 вложений',
         'images_attached': 'изображений'
     }
