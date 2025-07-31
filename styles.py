@@ -252,4 +252,22 @@ QGroupBox {
     color: #666666;
     font-size: 12px;
 }
+
+#telegramButton {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    font-size: 24px;
+    min-width: 44px;
+    min-height: 44px;
+}
+
+#telegramButton:hover {
+    background-color: #f0f0f0;
+    border-color: #b3b3b3;
+}
+
+#telegramButton:pressed {
+    background-color: #e0e0e0;
+}
 """
