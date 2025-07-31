@@ -288,9 +288,11 @@ class ErrorReportDialog(QDialog):
         buttons_layout = QHBoxLayout()
         self.send_btn = QPushButton("📤")  # Send icon
         self.send_btn.setObjectName("telegramButton")
-        self.send_btn.setFixedSize(44, 44)
+        self.send_btn.setFixedSize(36, 36)
         self.send_btn.clicked.connect(self.send_report)
-        self.cancel_btn = QPushButton(tr('cancel'))
+        self.cancel_btn = QPushButton("❌")  # Cancel icon
+        self.cancel_btn.setObjectName("telegramButton")
+        self.cancel_btn.setFixedSize(36, 36)
         self.cancel_btn.clicked.connect(self.reject)
         buttons_layout.addStretch()
         buttons_layout.addWidget(self.send_btn)
@@ -492,10 +494,12 @@ class FeedbackDialog(QDialog):
 
         self.send_btn = QPushButton("📤")  # Send icon
         self.send_btn.setObjectName("telegramButton")
-        self.send_btn.setFixedSize(44, 44)
+        self.send_btn.setFixedSize(36, 36)
         self.send_btn.clicked.connect(self.send_feedback)
 
-        self.cancel_btn = QPushButton(tr('cancel'))
+        self.cancel_btn = QPushButton("❌")  # Cancel icon
+        self.cancel_btn.setObjectName("telegramButton")
+        self.cancel_btn.setFixedSize(36, 36)
         self.cancel_btn.clicked.connect(self.reject)
 
         buttons_layout.addStretch()
