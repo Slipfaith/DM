@@ -13,6 +13,14 @@ venv/
 *.egg-info/
 .eggs/
 
+# System
+.DS_Store
+Thumbs.db
+
+# Telegram
+telegram_report_cache.json
+telegram/config.py
+
 # IDEs
 .vscode/
 .idea/
@@ -31,6 +39,10 @@ settings.json
 # System
 .DS_Store
 Thumbs.db
+
+# Telegram
+telegram_report_cache.json
+telegram/config.py
 
 # Build artifacts
 build/

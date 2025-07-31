@@ -1,6 +1,7 @@
 # gui.py
 import os
 import webbrowser
+import traceback
 from pathlib import Path
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QListWidget, QTextEdit, QLabel,
@@ -16,6 +17,8 @@ from logger import setup_logger
 from styles import MAIN_STYLE, ICON_PATH
 from updater import UpdateChecker, CURRENT_VERSION
 from translations import tr, set_language
+from error_dialog import ErrorReportDialog, FeedbackDialog
+from settings_manager import settings_manager
 
 
 class DragDropArea(QFrame):
@@ -96,6 +99,8 @@ class ProcessorThread(QThread):
         self.should_stop = False
         self.current_file_index = 0
         self._pause_lock = False
+        self._last_error = None
+        self._last_traceback = None
 
     def pause(self):
         self.is_paused = True
@@ -198,6 +203,10 @@ class ProcessorThread(QThread):
                     self.log_message.emit(f"Error in {Path(file).name}: {str(e)}")
                     results["failed"] += 1
 
+                    if "stopped by user" not in str(e):
+                        self._last_error = str(e)
+                        self._last_traceback = traceback.format_exc()
+
         self.finished.emit(results)
 
 
@@ -209,6 +218,10 @@ class MainWindow(QMainWindow):
         self.files = []
         self.updater = UpdateChecker(self)
         self.init_ui()
+
+        # Load saved language
+        saved_lang = settings_manager.get_language()
+        self.set_language(saved_lang)
 
     def init_ui(self):
         self.setWindowTitle(tr('app_title'))
@@ -281,19 +294,6 @@ class MainWindow(QMainWindow):
         buttons_layout = QHBoxLayout()
         buttons_layout.setSpacing(10)
 
-        settings_widget = QWidget()
-        settings_layout = QHBoxLayout(settings_widget)
-        settings_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.header_color_label = QLabel(tr('header_color'))
-        settings_layout.addWidget(self.header_color_label)
-        self.color_input = QSpinBox()
-        self.color_input.setObjectName("colorInput")
-        self.color_input.setRange(0, 16777215)
-        self.color_input.setValue(65535)
-        settings_layout.addWidget(self.color_input)
-
-        buttons_layout.addWidget(settings_widget)
         buttons_layout.addStretch()
 
         self.clear_btn = QPushButton(tr('clear_files'))
@@ -371,6 +371,10 @@ class MainWindow(QMainWindow):
         self.about_action.triggered.connect(self.show_about)
         self.help_menu.addAction(self.about_action)
 
+        self.feedback_action = QAction('', self)
+        self.feedback_action.triggered.connect(self.show_feedback_dialog)
+        self.help_menu.addAction(self.feedback_action)
+
         # Language menu
         self.language_menu = menubar.addMenu('')
         lang_group = QActionGroup(self)
@@ -387,6 +391,7 @@ class MainWindow(QMainWindow):
 
     def set_language(self, lang):
         set_language(lang)
+        settings_manager.set_language(lang)
         # keep actions checked
         self.lang_en.setChecked(lang == 'en')
         self.lang_ru.setChecked(lang == 'ru')
@@ -400,6 +405,7 @@ class MainWindow(QMainWindow):
         self.help_menu.setTitle(tr('menu_help'))
         self.update_action.setText(tr('menu_check_updates'))
         self.about_action.setText(tr('menu_about'))
+        self.feedback_action.setText(tr('menu_contact_developer'))
         self.language_menu.setTitle(tr('menu_language'))
         self.lang_en.setText(tr('lang_en'))
         self.lang_ru.setText(tr('lang_ru'))
@@ -407,7 +413,6 @@ class MainWindow(QMainWindow):
         self.drop_area.text_label.setText(tr('drag_drop_text'))
         self.loaded_group.setTitle(tr('loaded_files'))
         self.processed_group.setTitle(tr('processed_files'))
-        self.header_color_label.setText(tr('header_color'))
         self.clear_btn.setText(tr('clear_files'))
         self.process_btn.setText(tr('process_files'))
         if not self.files:
@@ -445,7 +450,7 @@ class MainWindow(QMainWindow):
         if not self.files:
             return
 
-        self.config.header_color = 65535  # Default yellow
+        self.config.header_color = 65535  # Always use yellow
 
         self.process_btn.hide()
         self.clear_btn.hide()
@@ -528,6 +533,21 @@ class MainWindow(QMainWindow):
             )
             self.log_text.append(">>> " + tr('completed', success=results['success'], failed=results['failed']))
 
+            if results['failed'] > 0 and hasattr(self.thread, '_last_error'):
+                reply = QMessageBox.question(
+                    self,
+                    tr('error_occurred'),
+                    tr('send_error_report_prompt'),
+                    QMessageBox.Yes | QMessageBox.No
+                )
+
+                if reply == QMessageBox.Yes:
+                    error_msg = self.thread._last_error
+                    if hasattr(self.thread, '_last_traceback'):
+                        error_msg = self.thread._last_traceback
+                    dialog = ErrorReportDialog(self, error_msg)
+                    dialog.exec()
+
     def open_folder(self, link):
         QDesktopServices.openUrl(QUrl.fromLocalFile(link))
 
@@ -540,3 +560,7 @@ class MainWindow(QMainWindow):
             tr('about_title'),
             tr('about_text', version=CURRENT_VERSION)
         )
+
+    def show_feedback_dialog(self):
+        dialog = FeedbackDialog(self)
+        dialog.exec()

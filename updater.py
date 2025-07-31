@@ -6,6 +6,7 @@ import os
 import sys
 import subprocess
 import tempfile
+import hashlib
 from packaging import version
 from PySide6.QtWidgets import QMessageBox, QProgressDialog
 from PySide6.QtCore import QThread, Signal, QTimer
@@ -56,6 +57,8 @@ class UpdateChecker:
     def __init__(self, parent=None):
         self.parent = parent
         self.download_thread = None
+        self.release_data = None
+        self.current_asset = None
 
     def check_for_updates(self, silent=False):
         try:
@@ -79,14 +82,27 @@ class UpdateChecker:
 
     def _show_update_available(self, latest_version, release_data):
         exe_asset = None
+        hash_asset = None
+
         for asset in release_data.get('assets', []):
             if asset['name'].endswith('.exe'):
                 exe_asset = asset
-                break
+            elif asset['name'].endswith('.exe.sha256'):
+                hash_asset = asset
 
         if not exe_asset:
             self._show_error(tr('no_exe_error'))
             return
+
+        if not hash_asset:
+            reply = QMessageBox.warning(
+                self.parent,
+                tr('warning'),
+                "No hash file found for verification.\nThis update may not be authentic.\n\nContinue anyway?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if reply != QMessageBox.Yes:
+                return
 
         msg = QMessageBox(self.parent)
         msg.setWindowTitle(tr('update_available_title'))
@@ -99,6 +115,8 @@ class UpdateChecker:
         msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
 
         if msg.exec() == QMessageBox.Yes:
+            self.release_data = release_data
+            self.current_asset = exe_asset
             self._download_update(exe_asset)
 
     def _download_update(self, asset):
@@ -125,6 +143,35 @@ class UpdateChecker:
     def _on_download_finished(self, file_path):
         self.progress_dialog.close()
 
+        # Try to download and verify hash
+        hash_verified = False
+        for asset in self.release_data.get('assets', []):
+            if asset['name'] == self.current_asset['name'] + '.sha256':
+                try:
+                    with urllib.request.urlopen(asset['browser_download_url']) as response:
+                        expected_hash = response.read().decode().strip().split()[0]
+
+                    if self.verify_file_hash(file_path, expected_hash):
+                        hash_verified = True
+                except Exception as e:
+                    QMessageBox.warning(
+                        self.parent,
+                        "Verification Warning",
+                        f"Could not verify file integrity:\n{str(e)}\n\nProceed with caution!"
+                    )
+                break
+
+        if not hash_verified:
+            reply = QMessageBox.warning(
+                self.parent,
+                "No Verification",
+                "File integrity could not be verified.\nInstall anyway?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if reply != QMessageBox.Yes:
+                os.remove(file_path)
+                return
+
         msg = QMessageBox(self.parent)
         msg.setWindowTitle(tr('update_downloaded_title'))
         msg.setText(tr('update_downloaded_text'))
@@ -137,6 +184,25 @@ class UpdateChecker:
     def _on_download_error(self, error):
         self.progress_dialog.close()
         self._show_error(tr('download_failed', error=error))
+
+    def verify_file_hash(self, file_path, expected_hash):
+        """Verify file integrity using SHA256 hash"""
+        sha256_hash = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            for byte_block in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(byte_block)
+
+        actual_hash = sha256_hash.hexdigest().lower()
+        expected_hash = expected_hash.lower()
+
+        if actual_hash != expected_hash:
+            raise Exception(
+                f"Hash mismatch! File may be corrupted or tampered.\n"
+                f"Expected: {expected_hash}\n"
+                f"Actual: {actual_hash}"
+            )
+
+        return True
 
     def _install_update(self, new_exe_path):
         current_exe = sys.executable

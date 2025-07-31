@@ -161,7 +161,7 @@ QMainWindow {
 }
 
 #stopButton {
-    background-color: #e0e0e0;
+    bbackground-color: #cccccc;
     color: #666666;
     border: 1px solid #cccccc;
     padding: 6px 12px;
