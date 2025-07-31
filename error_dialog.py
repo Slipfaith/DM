@@ -70,6 +70,39 @@ class DragDropTextEdit(QTextEdit):
         super().__init__()
         self.setAcceptDrops(True)
 
+    def insertFromMimeData(self, source: QMimeData):
+        """Handle pasting images directly from the clipboard."""
+        # Image data
+        if source.hasImage():
+            image = source.imageData()
+            if isinstance(image, QImage) and not image.isNull():
+                temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+                image.save(temp_file.name, 'PNG')
+                self.imagesDropped.emit([temp_file.name])
+                return
+
+        # File URLs
+        if source.hasUrls():
+            files = []
+            for url in source.urls():
+                file_path = url.toLocalFile()
+                if file_path and file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
+                    files.append(file_path)
+            if files:
+                self.imagesDropped.emit(files)
+                return
+
+        # Text with file path
+        if source.hasText():
+            text = source.text()
+            if text.startswith('file:///'):
+                file_path = text.replace('file:///', '').replace('/', os.sep)
+                if os.path.exists(file_path) and file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
+                    self.imagesDropped.emit([file_path])
+                    return
+
+        super().insertFromMimeData(source)
+
     def dragEnterEvent(self, event: QDragEnterEvent):
         mimeData = event.mimeData()
         if mimeData.hasUrls() or mimeData.hasImage() or mimeData.hasHtml():
@@ -238,7 +271,7 @@ class ErrorReportDialog(QDialog):
         layout.addLayout(buttons_layout)
 
         # Paste shortcut
-        self.paste_shortcut = QShortcut(QKeySequence.Paste, self)
+        self.paste_shortcut = QShortcut(QKeySequence.Paste, self.message_text)
         self.paste_shortcut.activated.connect(self.paste_image)
 
     def send_report(self):
@@ -445,7 +478,7 @@ class FeedbackDialog(QDialog):
         layout.addLayout(buttons_layout)
 
         # Paste shortcut
-        self.paste_shortcut = QShortcut(QKeySequence.Paste, self)
+        self.paste_shortcut = QShortcut(QKeySequence.Paste, self.message_text)
         self.paste_shortcut.activated.connect(self.paste_image)
 
     def send_feedback(self):
