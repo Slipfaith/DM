@@ -258,8 +258,8 @@ QGroupBox {
     border: 1px solid #d0d0d0;
     border-radius: 6px;
     font-size: 20px;
-    min-width: 36px;
-    min-height: 36px;
+    min-width: 32px;
+    min-height: 32px;
 }
 
 #telegramButton:hover {
