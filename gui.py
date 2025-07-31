@@ -1,17 +1,17 @@
 # gui.py
 import os
-import webbrowser
+
 import traceback
 from pathlib import Path
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QPushButton, QListWidget, QTextEdit, QLabel,
-                               QSpinBox, QProgressBar, QFileDialog, QFrame,
-                               QListWidgetItem, QGroupBox, QMenuBar, QMenu,
+                               QProgressBar, QFileDialog, QFrame,
+                               QListWidgetItem, QGroupBox,
                                QMessageBox)
 from PySide6.QtCore import Qt, QThread, Signal, Slot, QUrl, QTimer
 from PySide6.QtGui import (QDragEnterEvent, QDropEvent, QAction, QActionGroup,
                            QDesktopServices, QIcon)
-from excel_processor import ExcelProcessor
+
 from config import Config
 from logger import setup_logger
 from styles import MAIN_STYLE, ICON_PATH

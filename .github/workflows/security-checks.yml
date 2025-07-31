@@ -1,0 +1,115 @@
+# .github/workflows/security-checks.yml
+name: Security Checks
+
+on:
+  pull_request:
+    branches: [ main, master ]
+  push:
+    branches: [ main, master ]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install safety bandit semgrep
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Check for suspicious files
+      run: |
+        # Проверка на подозрительные файлы
+        if find . -name "*.exe" -o -name "*.msi" -o -name "*.scr" -o -name "*.com" -o -name "*.pif"; then
+          echo "❌ Suspicious executable files found!"
+          exit 1
+        fi
+        
+        # Проверка на скрытые файлы с подозрительными расширениями  
+        if find . -name ".*" -type f \( -name "*.bat" -o -name "*.cmd" -o -name "*.ps1" \); then
+          echo "❌ Suspicious hidden script files found!"
+          exit 1
+        fi
+
+    - name: Check for hardcoded secrets
+      run: |
+        # Простая проверка на токены и пароли
+        if grep -r -i -E "(password|token|api_key|secret)" --include="*.py" --exclude-dir=".git" .; then
+          echo "⚠️ Potential hardcoded secrets found. Please review."
+        fi
+
+    - name: Run Safety (vulnerability check)
+      run: |
+        safety check --json || true
+
+    - name: Run Bandit (security linter)
+      run: |
+        bandit -r . -f json -o bandit-report.json || true
+        cat bandit-report.json
+
+    - name: Validate Python syntax
+      run: |
+        python -m py_compile $(find . -name "*.py")
+
+    - name: Check imports
+      run: |
+        # Проверка на подозрительные импорты
+        python -c "
+import ast
+import os
+import sys
+
+suspicious_modules = [
+    'subprocess', 'os.system', 'eval', 'exec',
+    'urllib.request', '__import__', 'importlib',
+    'ctypes', 'win32api', 'winreg'
+]
+
+def check_file(filepath):
+    with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+        try:
+            tree = ast.parse(f.read())
+        except:
+            return
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in suspicious_modules:
+                    print(f'⚠️ Suspicious import in {filepath}: {alias.name}')
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            if node.module in suspicious_modules:
+                print(f'⚠️ Suspicious import in {filepath}: from {node.module}')
+
+for root, dirs, files in os.walk('.'):
+    for file in files:
+        if file.endswith('.py'):
+            check_file(os.path.join(root, file))
+        "
+
+  code-quality:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install flake8
+      run: pip install flake8
+
+    - name: Lint with flake8
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics

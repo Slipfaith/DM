@@ -2,12 +2,11 @@
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTextEdit,
                                QLineEdit, QPushButton, QLabel, QCheckBox,
                                QProgressBar, QMessageBox, QGroupBox, QTabWidget,
-                               QWidget, QSpacerItem, QSizePolicy)
-from PySide6.QtCore import Qt, QThread, Signal, QTimer
-from PySide6.QtGui import QIcon, QFont
+                               QWidget)
+from PySide6.QtCore import QThread, Signal, QTimer
+from PySide6.QtGui import QFont
 from telegram_reporter import get_telegram_reporter, send_user_feedback
 from translations import tr
-import traceback
 
 
 class FeedbackSendThread(QThread):

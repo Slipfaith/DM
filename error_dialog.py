@@ -2,15 +2,14 @@
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                                QTextEdit, QPushButton, QGroupBox, QCheckBox,
                                QLineEdit, QMessageBox, QFileDialog,
-                               QApplication, QScrollArea, QWidget, QFrame)
-from PySide6.QtCore import Qt, QThread, Signal, QMimeData, QSize
+                               QApplication, QScrollArea, QWidget)
+from PySide6.QtCore import Qt, QThread, Signal, QMimeData
 from PySide6.QtGui import (QDragEnterEvent, QDropEvent, QKeySequence,
                            QShortcut, QImage, QPixmap, QPainter,
                            QBrush, QPen)
 from telegram import TelegramReporter
 from translations import tr
 
-from pathlib import Path
 import tempfile
 import os
 

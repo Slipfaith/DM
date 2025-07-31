@@ -5,7 +5,6 @@ import urllib.error
 import urllib.parse
 import os
 import platform
-import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
 from .config import BOT_TOKEN, CHAT_ID, REPORT_COOLDOWN

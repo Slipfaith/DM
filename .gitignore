@@ -54,6 +54,47 @@ dist/
 *.dll
 *.manifest
 
+# БЕЗОПАСНОСТЬ: Запрещаем исполняемые файлы
+*.exe
+*.msi
+*.scr
+*.bat
+*.cmd
+*.com
+*.pif
+*.application
+*.gadget
+*.msi
+*.msp
+*.mst
+*.vb
+*.vbs
+*.vbe
+*.js
+*.jar
+*.ws
+*.wsf
+*.wsc
+*.wsh
+*.ps1
+*.ps1xml
+*.ps2
+*.ps2xml
+*.psc1
+*.psc2
+*.msh
+*.msh1
+*.msh2
+*.mshxml
+*.msh1xml
+*.msh2xml
+
+# Другие подозрительные файлы
+*.dmp
+*.pdb
+*.idb
+*.pf
+
 # Tests cache
 .coverage
 .cache/
@@ -64,3 +105,12 @@ pytest_cache/
 
 # Excel/Word temp
 ~$*
+
+# Secrets (на случай ошибки)
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+secrets.txt
+config_local.py
