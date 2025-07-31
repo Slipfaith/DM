@@ -286,21 +286,16 @@ class ErrorReportDialog(QDialog):
         layout.addWidget(self.thumbnails_scroll)
 
         buttons_layout = QHBoxLayout()
-
         self.send_btn = QPushButton("📤")  # Send icon
         self.send_btn.setObjectName("telegramButton")
         self.send_btn.setFixedSize(44, 44)
         self.send_btn.clicked.connect(self.send_report)
-
         self.cancel_btn = QPushButton(tr('cancel'))
         self.cancel_btn.clicked.connect(self.reject)
-
         buttons_layout.addStretch()
         buttons_layout.addWidget(self.send_btn)
         buttons_layout.addWidget(self.cancel_btn)
-
         layout.addLayout(buttons_layout)
-
         # Paste shortcut
         self.paste_shortcut = QShortcut(QKeySequence.Paste, self.message_text)
         self.paste_shortcut.activated.connect(self.paste_image)
