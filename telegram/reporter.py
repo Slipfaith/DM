@@ -53,7 +53,7 @@ class TelegramReporter:
                 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
 
-            message = f"🚨 *Excel Processor Error Report*\n\n"
+            message = f"🚨 *Verxell Error Report*\n\n"
             message += f"*Time:* {system_info['timestamp']}\n"
             message += f"*System:* {system_info['platform']}\n"
             message += f"*Python:* {system_info['python_version']}\n\n"
@@ -97,7 +97,7 @@ class TelegramReporter:
             return False, f"Please wait {int(remaining / 60)} minutes before sending another message"
 
         try:
-            message = f"💬 *Excel Processor Feedback*\n\n"
+            message = f"💬 *Verxell Feedback*\n\n"
             message += f"*Time:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
 
             if email:
