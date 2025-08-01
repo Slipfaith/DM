@@ -4,9 +4,9 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                                QLineEdit, QMessageBox, QFileDialog,
                                QApplication, QScrollArea, QWidget)
 from PySide6.QtCore import Qt, QThread, Signal, QMimeData
-from PySide6.QtGui import (QDragEnterEvent, QDropEvent, QKeySequence,
-                           QShortcut, QImage, QPixmap, QPainter,
-                           QBrush, QPen)
+from PySide6.QtGui import (QDragEnterEvent, QDropEvent, QDragMoveEvent,
+                           QKeySequence, QShortcut, QImage, QPixmap,
+                           QPainter, QBrush, QPen)
 from telegram import TelegramReporter
 from translations import tr
 
@@ -193,9 +193,12 @@ class DragDropTextEdit(QTextEdit):
             if has_valid:
                 event.acceptProposedAction()
             else:
-                super().dragEnterEvent(event)
+                event.ignore()
         else:
-            super().dragEnterEvent(event)
+            event.ignore()
+
+    def dragMoveEvent(self, event: QDragMoveEvent):
+        self.dragEnterEvent(event)
 
     def dropEvent(self, event: QDropEvent):
         mimeData = event.mimeData()
@@ -207,7 +210,7 @@ class DragDropTextEdit(QTextEdit):
                 temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
                 image.save(temp_file.name, 'PNG')
                 self.imagesDropped.emit([temp_file.name])
-                event.acceptProposedAction()
+                event.accept()
                 return
 
         # Handle file URLs
@@ -224,11 +227,10 @@ class DragDropTextEdit(QTextEdit):
                         other_files.append(file_path)
             if img_files:
                 self.imagesDropped.emit(img_files)
-                event.acceptProposedAction()
-                return
             if other_files:
                 self.filesDropped.emit(other_files)
-                event.acceptProposedAction()
+            if img_files or other_files:
+                event.accept()
                 return
 
         # Handle HTML with images
@@ -246,7 +248,7 @@ class DragDropTextEdit(QTextEdit):
                         files.append(file_path)
             if files:
                 self.imagesDropped.emit(files)
-                event.acceptProposedAction()
+                event.accept()
                 return
 
         super().dropEvent(event)
@@ -546,6 +548,7 @@ class FeedbackDialog(QDialog):
         super().__init__(parent)
         self.reporter = TelegramReporter()
         self.attached_images = []
+        self.attached_files = []
         self.init_ui()
 
     def init_ui(self):
@@ -558,9 +561,10 @@ class FeedbackDialog(QDialog):
         message_group = QGroupBox(tr('your_message'))
         message_layout = QVBoxLayout(message_group)
 
-        self.message_text = DragDropTextEdit()
+        self.message_text = DragDropTextEdit(extra_file_exts=ALLOWED_FILE_EXTS)
         self.message_text.setPlaceholderText(tr('feedback_placeholder_drag'))
         self.message_text.imagesDropped.connect(self.add_images)
+        self.message_text.filesDropped.connect(self.add_files)
         message_layout.addWidget(self.message_text)
 
         layout.addWidget(message_group)
@@ -573,8 +577,8 @@ class FeedbackDialog(QDialog):
         layout.addLayout(email_layout)
 
         attach_layout = QHBoxLayout()
-        self.attach_btn = QPushButton(tr('attach_image'))
-        self.attach_btn.clicked.connect(self.attach_image)
+        self.attach_btn = QPushButton(tr('attach_file'))
+        self.attach_btn.clicked.connect(self.attach_file)
         attach_layout.addWidget(self.attach_btn)
         attach_layout.addStretch()
         layout.addLayout(attach_layout)
@@ -630,7 +634,8 @@ class FeedbackDialog(QDialog):
         success, result_message = self.reporter.send_feedback(
             message,
             email if email else None,
-            self.attached_images
+            self.attached_images,
+            self.attached_files
         )
 
         self.send_btn.setEnabled(True)
@@ -642,22 +647,40 @@ class FeedbackDialog(QDialog):
         else:
             QMessageBox.warning(self, tr('error'), result_message)
 
-    def attach_image(self):
+    def attach_file(self):
         files, _ = QFileDialog.getOpenFileNames(
             self,
-            tr('select_images'),
+            tr('select_files'),
             "",
-            "Images (*.png *.jpg *.jpeg *.gif *.bmp)"
+            "Files (*.png *.jpg *.jpeg *.gif *.bmp *.txt *.log *.xlsx *.xls)"
         )
-        self.add_images(files)
+        images = [f for f in files if f.lower().endswith(ALLOWED_IMAGE_EXTS)]
+        other = [f for f in files if f.lower().endswith(ALLOWED_FILE_EXTS)]
+        if images:
+            self.add_images(images)
+        if other:
+            self.add_files(other)
 
     def add_images(self, files):
         for file in files:
-            if file not in self.attached_images and len(self.attached_images) < 5:
+            if file not in self.attached_images and (
+                    len(self.attached_images) + len(self.attached_files)) < 5:
                 self.attached_images.append(file)
                 self.add_thumbnail(file)
 
-        if len(self.attached_images) >= 5:
+        if (len(self.attached_images) + len(self.attached_files)) >= 5:
+            QMessageBox.information(self, tr('info'), tr('max_attachments'))
+
+        self.update_thumbnails_visibility()
+
+    def add_files(self, files):
+        for file in files:
+            if file not in self.attached_files and (
+                    len(self.attached_images) + len(self.attached_files)) < 5:
+                self.attached_files.append(file)
+                self.add_file_widget(file)
+
+        if (len(self.attached_images) + len(self.attached_files)) >= 5:
             QMessageBox.information(self, tr('info'), tr('max_attachments'))
 
         self.update_thumbnails_visibility()
@@ -666,6 +689,11 @@ class FeedbackDialog(QDialog):
         thumbnail = ImageThumbnail(image_path)
         thumbnail.removed.connect(self.remove_image)
         self.thumbnails_layout.addWidget(thumbnail)
+
+    def add_file_widget(self, file_path):
+        widget = FileAttachment(file_path)
+        widget.removed.connect(self.remove_file)
+        self.thumbnails_layout.addWidget(widget)
 
     def remove_image(self, image_path):
         if image_path in self.attached_images:
@@ -679,23 +707,50 @@ class FeedbackDialog(QDialog):
 
         self.update_thumbnails_visibility()
 
+    def remove_file(self, file_path):
+        if file_path in self.attached_files:
+            self.attached_files.remove(file_path)
+
+        for i in range(self.thumbnails_layout.count()):
+            widget = self.thumbnails_layout.itemAt(i).widget()
+            if isinstance(widget, FileAttachment) and widget.file_path == file_path:
+                widget.deleteLater()
+                break
+
+        self.update_thumbnails_visibility()
+
     def update_thumbnails_visibility(self):
-        self.thumbnails_scroll.setVisible(len(self.attached_images) > 0)
+        self.thumbnails_scroll.setVisible(
+            (len(self.attached_images) + len(self.attached_files)) > 0
+        )
 
     def paste_image(self):
         clipboard = QApplication.clipboard()
 
-        if clipboard.image():
-            image = clipboard.image()
-            if not image.isNull():
-                temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-                image.save(temp_file.name, 'PNG')
-                self.add_images([temp_file.name])
-        elif clipboard.mimeData().hasUrls():
-            files = []
-            for url in clipboard.mimeData().urls():
+        # First try to get image directly
+        image = clipboard.image()
+        if not image.isNull():
+            temp_file = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            image.save(temp_file.name, 'PNG')
+            self.add_images([temp_file.name])
+            return
+
+        # Then try file URLs
+        mimeData = clipboard.mimeData()
+        if mimeData.hasUrls():
+            img_files = []
+            other_files = []
+            for url in mimeData.urls():
                 file_path = url.toLocalFile()
-                if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
-                    files.append(file_path)
-            if files:
-                self.add_images(files)
+                if file_path:
+                    lower = file_path.lower()
+                    if lower.endswith(ALLOWED_IMAGE_EXTS):
+                        img_files.append(file_path)
+                    elif lower.endswith(ALLOWED_FILE_EXTS):
+                        other_files.append(file_path)
+            if img_files:
+                self.add_images(img_files)
+            if other_files:
+                self.add_files(other_files)
+            if img_files or other_files:
+                return

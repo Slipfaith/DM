@@ -91,7 +91,7 @@ class TelegramReporter:
         except Exception as e:
             return False, f"Failed to send report: {str(e)}"
 
-    def send_feedback(self, user_message, email=None, images=None):
+    def send_feedback(self, user_message, email=None, images=None, files=None):
         if not self.can_send_report():
             remaining = REPORT_COOLDOWN - (datetime.now() - self.last_report_time).total_seconds()
             return False, f"Please wait {int(remaining / 60)} minutes before sending another message"
@@ -111,6 +111,13 @@ class TelegramReporter:
                 for image_path in images:
                     try:
                         self._send_telegram_photo(image_path)
+                    except:
+                        pass
+
+            if files:
+                for file_path in files:
+                    try:
+                        self._send_telegram_document(file_path)
                     except:
                         pass
 
