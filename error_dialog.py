@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
 from PySide6.QtCore import Qt, QThread, Signal, QMimeData
 from PySide6.QtGui import (QDragEnterEvent, QDropEvent, QDragMoveEvent,
                            QKeySequence, QShortcut, QImage, QPixmap,
-                           QPainter, QBrush, QPen)
+                           QPainter, QBrush, QPen, QFontMetrics)
 from telegram import TelegramReporter
 from translations import tr
 
@@ -104,9 +104,16 @@ class FileAttachment(QWidget):
         self.file_path = file_path
         layout = QHBoxLayout(self)
         layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(4)
 
         icon = QLabel("📄")
-        name = QLabel(os.path.basename(file_path))
+
+        name = QLabel()
+        metrics = QFontMetrics(name.font())
+        display_name = metrics.elidedText(os.path.basename(file_path), Qt.ElideRight, 100)
+        name.setText(display_name)
+        name.setToolTip(os.path.basename(file_path))
+
         remove_btn = QPushButton("✕")
         remove_btn.setFixedSize(16, 16)
         remove_btn.clicked.connect(lambda: self.removed.emit(self.file_path))
@@ -326,19 +333,28 @@ class ErrorReportDialog(QDialog):
         attach_layout.addStretch()
         layout.addLayout(attach_layout)
 
-        # Thumbnails area
+        # Attachments area (images and files in separate columns)
         self.thumbnails_scroll = QScrollArea()
-        self.thumbnails_scroll.setMaximumHeight(80)
+        self.thumbnails_scroll.setMaximumHeight(120)
         self.thumbnails_scroll.setWidgetResizable(True)
-        self.thumbnails_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.thumbnails_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.thumbnails_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.thumbnails_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.thumbnails_scroll.hide()
 
         self.thumbnails_widget = QWidget()
         self.thumbnails_layout = QHBoxLayout(self.thumbnails_widget)
         self.thumbnails_layout.setAlignment(Qt.AlignLeft)
-        self.thumbnails_scroll.setWidget(self.thumbnails_widget)
 
+        self.file_layout = QVBoxLayout()
+        self.file_layout.setAlignment(Qt.AlignTop)
+        self.image_layout = QVBoxLayout()
+        self.image_layout.setAlignment(Qt.AlignTop)
+
+        self.thumbnails_layout.addLayout(self.file_layout)
+        self.thumbnails_layout.addLayout(self.image_layout)
+        self.thumbnails_layout.addStretch()
+
+        self.thumbnails_scroll.setWidget(self.thumbnails_widget)
         layout.addWidget(self.thumbnails_scroll)
 
         buttons_layout = QHBoxLayout()
@@ -425,19 +441,19 @@ class ErrorReportDialog(QDialog):
     def add_thumbnail(self, image_path):
         thumbnail = ImageThumbnail(image_path)
         thumbnail.removed.connect(self.remove_image)
-        self.thumbnails_layout.addWidget(thumbnail)
+        self.image_layout.addWidget(thumbnail)
 
     def add_file_widget(self, file_path):
         widget = FileAttachment(file_path)
         widget.removed.connect(self.remove_file)
-        self.thumbnails_layout.addWidget(widget)
+        self.file_layout.addWidget(widget)
 
     def remove_image(self, image_path):
         if image_path in self.attached_images:
             self.attached_images.remove(image_path)
 
-        for i in range(self.thumbnails_layout.count()):
-            widget = self.thumbnails_layout.itemAt(i).widget()
+        for i in range(self.image_layout.count()):
+            widget = self.image_layout.itemAt(i).widget()
             if isinstance(widget, ImageThumbnail) and widget.image_path == image_path:
                 widget.deleteLater()
                 break
@@ -448,8 +464,8 @@ class ErrorReportDialog(QDialog):
         if file_path in self.attached_files:
             self.attached_files.remove(file_path)
 
-        for i in range(self.thumbnails_layout.count()):
-            widget = self.thumbnails_layout.itemAt(i).widget()
+        for i in range(self.file_layout.count()):
+            widget = self.file_layout.itemAt(i).widget()
             if isinstance(widget, FileAttachment) and widget.file_path == file_path:
                 widget.deleteLater()
                 break
@@ -583,17 +599,27 @@ class FeedbackDialog(QDialog):
         attach_layout.addStretch()
         layout.addLayout(attach_layout)
 
-        # Thumbnails area
+        # Attachments area (images and files in separate columns)
         self.thumbnails_scroll = QScrollArea()
-        self.thumbnails_scroll.setMaximumHeight(80)
+        self.thumbnails_scroll.setMaximumHeight(120)
         self.thumbnails_scroll.setWidgetResizable(True)
-        self.thumbnails_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.thumbnails_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.thumbnails_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.thumbnails_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.thumbnails_scroll.hide()
 
         self.thumbnails_widget = QWidget()
         self.thumbnails_layout = QHBoxLayout(self.thumbnails_widget)
         self.thumbnails_layout.setAlignment(Qt.AlignLeft)
+
+        self.file_layout = QVBoxLayout()
+        self.file_layout.setAlignment(Qt.AlignTop)
+        self.image_layout = QVBoxLayout()
+        self.image_layout.setAlignment(Qt.AlignTop)
+
+        self.thumbnails_layout.addLayout(self.file_layout)
+        self.thumbnails_layout.addLayout(self.image_layout)
+        self.thumbnails_layout.addStretch()
+
         self.thumbnails_scroll.setWidget(self.thumbnails_widget)
 
         layout.addWidget(self.thumbnails_scroll)
@@ -688,19 +714,19 @@ class FeedbackDialog(QDialog):
     def add_thumbnail(self, image_path):
         thumbnail = ImageThumbnail(image_path)
         thumbnail.removed.connect(self.remove_image)
-        self.thumbnails_layout.addWidget(thumbnail)
+        self.image_layout.addWidget(thumbnail)
 
     def add_file_widget(self, file_path):
         widget = FileAttachment(file_path)
         widget.removed.connect(self.remove_file)
-        self.thumbnails_layout.addWidget(widget)
+        self.file_layout.addWidget(widget)
 
     def remove_image(self, image_path):
         if image_path in self.attached_images:
             self.attached_images.remove(image_path)
 
-        for i in range(self.thumbnails_layout.count()):
-            widget = self.thumbnails_layout.itemAt(i).widget()
+        for i in range(self.image_layout.count()):
+            widget = self.image_layout.itemAt(i).widget()
             if isinstance(widget, ImageThumbnail) and widget.image_path == image_path:
                 widget.deleteLater()
                 break
@@ -711,8 +737,8 @@ class FeedbackDialog(QDialog):
         if file_path in self.attached_files:
             self.attached_files.remove(file_path)
 
-        for i in range(self.thumbnails_layout.count()):
-            widget = self.thumbnails_layout.itemAt(i).widget()
+        for i in range(self.file_layout.count()):
+            widget = self.file_layout.itemAt(i).widget()
             if isinstance(widget, FileAttachment) and widget.file_path == file_path:
                 widget.deleteLater()
                 break
