@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QMessageBox, QProgressDialog
 from PySide6.QtCore import QThread, Signal, QTimer
 from translations import tr
 
-CURRENT_VERSION = "1.1.0"
+CURRENT_VERSION = "1.2.0"
 GITHUB_API_URL = "https://api.github.com/repos/Slipfaith/DM/releases/latest"
 
 
