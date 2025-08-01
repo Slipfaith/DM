@@ -176,7 +176,7 @@ class FeedbackDialog(QDialog):
         self.setup_feedback_tab(feedback_tab)
         tab_widget.addTab(feedback_tab, tr('feedback_tab'))
 
-        # Таб связи с разработчиком
+        # Таб связи с хозяином
         contact_tab = QWidget()
         self.setup_contact_tab(contact_tab)
         tab_widget.addTab(contact_tab, tr('contact_tab'))
@@ -257,7 +257,7 @@ class FeedbackDialog(QDialog):
         layout = QVBoxLayout(tab)
         layout.setSpacing(20)
 
-        # Информация о разработчике
+        # Информация о хозяине
         dev_info = QLabel(tr('developer_info'))
         dev_info.setWordWrap(True)
         layout.addWidget(dev_info)
