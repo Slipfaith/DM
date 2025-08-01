@@ -41,7 +41,7 @@ class TelegramReporter:
             return True
         return datetime.now() - self.last_report_time > timedelta(seconds=REPORT_COOLDOWN)
 
-    def send_error_report(self, error_message, log_content=None, user_message=None, images=None):
+    def send_error_report(self, error_message, log_content=None, user_message=None, images=None, files=None):
         if not self.can_send_report():
             remaining = REPORT_COOLDOWN - (datetime.now() - self.last_report_time).total_seconds()
             return False, f"Please wait {int(remaining / 60)} minutes before sending another report"
@@ -73,6 +73,13 @@ class TelegramReporter:
                 for image_path in images:
                     try:
                         self._send_telegram_photo(image_path)
+                    except:
+                        pass
+
+            if files:
+                for file_path in files:
+                    try:
+                        self._send_telegram_document(file_path)
                     except:
                         pass
 
@@ -165,6 +172,39 @@ class TelegramReporter:
             if not result.get('ok'):
                 raise Exception(f"Telegram API error: {result}")
 
+    def _send_telegram_document(self, file_path):
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+
+        boundary = '----WebKitFormBoundary' + os.urandom(16).hex()
+
+        with open(file_path, 'rb') as f:
+            file_data = f.read()
+
+        body = []
+        body.append(f'------{boundary}')
+        body.append('Content-Disposition: form-data; name="chat_id"')
+        body.append('')
+        body.append(str(CHAT_ID))
+        body.append(f'------{boundary}')
+        body.append(f'Content-Disposition: form-data; name="document"; filename="{os.path.basename(file_path)}"')
+        body.append('Content-Type: application/octet-stream')
+        body.append('')
+
+        body_start = '\r\n'.join(body).encode('utf-8')
+        body_end = f'\r\n------{boundary}--\r\n'.encode('utf-8')
+
+        body_data = body_start + b'\r\n' + file_data + body_end
+
+        req = urllib.request.Request(url)
+        req.add_header('Content-Type', f'multipart/form-data; boundary=----{boundary}')
+        req.add_header('Content-Length', str(len(body_data)))
+        req.data = body_data
+
+        with urllib.request.urlopen(req, timeout=30) as response:
+            result = json.loads(response.read().decode())
+            if not result.get('ok'):
+                raise Exception(f"Telegram API error: {result}")
+
     def get_latest_log_content(self):
         log_dir = Path("logs")
         if not log_dir.exists():
@@ -178,5 +218,4 @@ class TelegramReporter:
                     return f.read()
             except:
                 return None
-
         return None
