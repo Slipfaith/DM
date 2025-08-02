@@ -212,6 +212,12 @@ class ProcessorThread(QThread):
                     if "stopped by user" not in str(e):
                         self._last_error = str(e)
                         self._last_traceback = traceback.format_exc()
+        # Emit final progress step to show 100% once all sheets are handled
+        # The progress bar range is set to total_sheets + 1, so the last sheet
+        # corresponds to 99% and this extra step reaches 100% when the process
+        # truly finishes.
+        if self.total_sheets:
+            self.progress.emit(self.total_sheets + 1)
 
         self.finished.emit(results)
 
@@ -509,14 +515,18 @@ class MainWindow(QMainWindow):
 
     def on_sheet_progress(self, processed, total):
         if processed == 0:
-            # Set progress bar range based on total sheets
-            self.progress_bar.setRange(0, total)
+            # Include an extra step so the final completion can reach 100%
+            # while the last sheet represents 99%.
+            self.progress_bar.setRange(0, total + 1)
         self.progress_label.setText(
             tr('sheets_progress', processed=processed, total=total)
         )
 
     @Slot(dict)
     def on_process_finished(self, results):
+        # Make sure the progress bar reaches 100% before hiding it
+        self.progress_bar.setValue(self.thread.total_sheets + 1)
+
         self.process_btn.show()
         self.clear_btn.show()
         self.pause_btn.hide()
