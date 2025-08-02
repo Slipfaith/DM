@@ -116,16 +116,37 @@ class ProcessorThread(QThread):
         self._pause_lock = False
 
     def count_sheets(self):
-        from excel_com import ExcelCOM
+        """Count total sheets across all selected Excel files.
+
+        Attempts to use ``openpyxl`` first as it handles sheet counting
+        reliably for modern Excel formats. If loading via ``openpyxl``
+        fails (e.g. for legacy ``.xls`` files), it falls back to the
+        COM-based approach used elsewhere in the application. Any files
+        that still fail to open are simply skipped.
+        """
+
         total = 0
-        with ExcelCOM() as excel:
-            for file in self.files:
-                try:
+        for file in self.files:
+            try:
+                from openpyxl import load_workbook
+
+                wb = load_workbook(file, read_only=True, keep_vba=True)
+                total += len(wb.sheetnames)
+                wb.close()
+                continue
+            except Exception:
+                pass
+
+            try:
+                from excel_com import ExcelCOM
+
+                with ExcelCOM() as excel:
                     wb = excel.open_workbook(file)
                     total += wb.Sheets.Count
                     wb.Close(False)
-                except:
-                    pass
+            except Exception:
+                pass
+
         return total
 
     def check_pause_stop(self):
