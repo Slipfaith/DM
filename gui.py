@@ -164,9 +164,12 @@ class ProcessorThread(QThread):
         results = {"success": 0, "failed": 0, "output_folder": None}
 
         self.total_sheets = self.count_sheets()
-        # Initialize progress information
-        self.progress.emit(0)
+        # Initialize progress information. Emit sheet information first so
+        # the main thread can configure the progress bar range before any
+        # values are set. This avoids the default 0-99 range which would
+        # incorrectly cap progress for workbooks with more than 99 sheets.
         self.sheet_progress.emit(0, self.total_sheets)
+        self.progress.emit(0)
 
         for i in range(self.current_file_index, len(self.files)):
             if not self.check_pause_stop():
@@ -233,13 +236,6 @@ class ProcessorThread(QThread):
                     if "stopped by user" not in str(e):
                         self._last_error = str(e)
                         self._last_traceback = traceback.format_exc()
-        # Emit final progress step to show 100% once all sheets are handled
-        # The progress bar range is set to total_sheets + 1, so the last sheet
-        # corresponds to 99% and this extra step reaches 100% when the process
-        # truly finishes.
-        if self.total_sheets:
-            self.progress.emit(self.total_sheets + 1)
-
         self.finished.emit(results)
 
 
@@ -536,17 +532,17 @@ class MainWindow(QMainWindow):
 
     def on_sheet_progress(self, processed, total):
         if processed == 0:
-            # Include an extra step so the final completion can reach 100%
-            # while the last sheet represents 99%.
-            self.progress_bar.setRange(0, total + 1)
+            # Configure the progress bar to track the exact number of sheets
+            # instead of using a percentage-based range.
+            self.progress_bar.setRange(0, total)
         self.progress_label.setText(
             tr('sheets_progress', processed=processed, total=total)
         )
 
     @Slot(dict)
     def on_process_finished(self, results):
-        # Make sure the progress bar reaches 100% before hiding it
-        self.progress_bar.setValue(self.thread.total_sheets + 1)
+        # Make sure the progress bar reflects the final processed count
+        self.progress_bar.setValue(self.thread.total_sheets)
 
         self.process_btn.show()
         self.clear_btn.show()
