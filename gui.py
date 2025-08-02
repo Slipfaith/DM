@@ -143,6 +143,8 @@ class ProcessorThread(QThread):
         results = {"success": 0, "failed": 0, "output_folder": None}
 
         self.total_sheets = self.count_sheets()
+        # Initialize progress information
+        self.progress.emit(0)
         self.sheet_progress.emit(0, self.total_sheets)
 
         for i in range(self.current_file_index, len(self.files)):
@@ -175,9 +177,13 @@ class ProcessorThread(QThread):
                         # Check for sheet completion
                         if "Sheet" in msg and "Done." in msg:
                             self.thread.processed_sheets += 1
-                            progress = int((self.thread.processed_sheets / self.thread.total_sheets) * 100)
-                            self.thread.progress.emit(progress)
-                            self.thread.sheet_progress.emit(self.thread.processed_sheets, self.thread.total_sheets)
+                            # Emit actual sheet counts instead of percentage to avoid
+                            # truncation when processing more than 100 sheets
+                            self.thread.progress.emit(self.thread.processed_sheets)
+                            self.thread.sheet_progress.emit(
+                                self.thread.processed_sheets,
+                                self.thread.total_sheets
+                            )
 
                         # Check pause/stop after each sheet
                         if "searching for header" in msg or "Done." in msg:
@@ -502,7 +508,12 @@ class MainWindow(QMainWindow):
         self.processed_list.addItem(item)
 
     def on_sheet_progress(self, processed, total):
-        self.progress_label.setText(tr('sheets_progress', processed=processed, total=total))
+        if processed == 0:
+            # Set progress bar range based on total sheets
+            self.progress_bar.setRange(0, total)
+        self.progress_label.setText(
+            tr('sheets_progress', processed=processed, total=total)
+        )
 
     @Slot(dict)
     def on_process_finished(self, results):
@@ -531,7 +542,10 @@ class MainWindow(QMainWindow):
             self.status_label.setText(
                 tr('completed', success=results['success'], failed=results['failed'])
             )
-            self.log_text.append(">>> " + tr('completed', success=results['success'], failed=results['failed']))
+            self.log_text.append(
+                ">>> "
+                + tr('completed', success=results['success'], failed=results['failed'])
+            )
 
             if results['failed'] > 0 and hasattr(self.thread, '_last_error'):
                 reply = QMessageBox.question(
@@ -547,6 +561,17 @@ class MainWindow(QMainWindow):
                         error_msg = self.thread._last_traceback
                     dialog = ErrorReportDialog(self, error_msg)
                     dialog.exec()
+
+        # Explicitly log final sheet statistics so the user can see
+        # how many sheets were processed in total
+        self.log_text.append(
+            ">>> "
+            + tr(
+                'sheets_progress',
+                processed=self.thread.processed_sheets,
+                total=self.thread.total_sheets,
+            )
+        )
 
     def open_folder(self, link):
         QDesktopServices.openUrl(QUrl.fromLocalFile(link))
