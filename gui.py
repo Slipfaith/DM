@@ -155,12 +155,18 @@ class ProcessorThread(QThread):
             try:
                 self.file_processing.emit(Path(file).name)
 
-                # Create a custom processor that checks for pause/stop
                 from excel_processor import ExcelProcessor
                 processor = ExcelProcessor(self.config)
 
-                # Inject pause/stop checker
                 processor._pause_stop_checker = self.check_pause_stop
+
+                def sheet_completed_callback(current_sheet, total_sheets):
+                    self.processed_sheets += 1
+                    progress = int((self.processed_sheets / self.total_sheets) * 100)
+                    self.progress.emit(progress)
+                    self.sheet_progress.emit(self.processed_sheets, self.total_sheets)
+
+                processor.set_sheet_progress_callback(sheet_completed_callback)
 
                 import logging
                 class GuiLogHandler(logging.Handler):
@@ -172,15 +178,7 @@ class ProcessorThread(QThread):
                         msg = self.format(record)
                         self.thread.log_message.emit(msg)
 
-                        # Check for sheet completion
-                        if "Sheet" in msg and "Done." in msg:
-                            self.thread.processed_sheets += 1
-                            progress = int((self.thread.processed_sheets / self.thread.total_sheets) * 100)
-                            self.thread.progress.emit(progress)
-                            self.thread.sheet_progress.emit(self.thread.processed_sheets, self.thread.total_sheets)
-
-                        # Check pause/stop after each sheet
-                        if "searching for header" in msg or "Done." in msg:
+                        if "searching for header" in msg or "processing group" in msg:
                             if not self.thread.check_pause_stop():
                                 raise Exception("Processing stopped by user")
 

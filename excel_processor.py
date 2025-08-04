@@ -1,5 +1,3 @@
-# excel_processor.py
-
 import re
 from pathlib import Path
 import shutil
@@ -14,6 +12,10 @@ class ExcelProcessor:
         self.config = config
         self.logger = get_logger()
         self.v2_processor = ExcelProcessorV2(config)
+        self._sheet_progress_callback = None
+
+    def set_sheet_progress_callback(self, callback):
+        self._sheet_progress_callback = callback
 
     def process_file(self, filepath: str):
         self.logger.info(f"Starting processing: {filepath}")
@@ -41,14 +43,23 @@ class ExcelProcessor:
                     sheet_name = sheet.Name
                     self.logger.info(f"Processing sheet {sheet_index}/{total_sheets}: '{sheet_name}'")
 
-                    # Try V2 method first
                     if self.v2_processor.can_process(sheet):
                         self.logger.info(f"Using V2 method for sheet '{sheet_name}'")
+
+                        def v2_progress_callback(processed, total):
+                            progress_msg = f"Sheet '{sheet_name}': processing group {processed}/{total}"
+                            self.logger.info(progress_msg)
+
+                        self.v2_processor.set_progress_callback(v2_progress_callback)
                         self.v2_processor.process_sheet(sheet)
                     else:
-                        # Use V1 method
                         self.logger.info(f"Using V1 method for sheet '{sheet_name}'")
                         self._process_sheet_v1(sheet, source_path.name)
+
+                    self.logger.info(f"Sheet '{sheet_name}' - Done.")
+
+                    if self._sheet_progress_callback:
+                        self._sheet_progress_callback(sheet_index, total_sheets)
 
                 self.logger.info(f"Saving file...")
                 wb.Save()
@@ -67,7 +78,6 @@ class ExcelProcessor:
             self.logger.info(
                 f"Excel {filename} - Sheet '{sheet_name}' - found header at row {header_range.Row}, duplicating rows...")
             self._restructure_sheet(sheet, header_range)
-            self.logger.info(f"Excel {filename} - Sheet '{sheet_name}' - Done.")
         else:
             self.logger.warning(
                 f"Excel {filename} - Sheet '{sheet_name}' - no header found, skipping.")
@@ -131,6 +141,8 @@ class ExcelProcessor:
         used_range = sheet.UsedRange
         last_row = used_range.Row + used_range.Rows.Count - 1
 
+        header_height = sheet.Rows(header_row).RowHeight
+
         data_blocks = []
         row = header_row + 1
 
@@ -155,7 +167,7 @@ class ExcelProcessor:
         self.logger.info(f"Found {len(data_blocks)} data blocks to process")
 
         sheet.Application.ScreenUpdating = False
-        sheet.Application.Calculation = -4135  # xlCalculationManual
+        sheet.Application.Calculation = -4135
 
         for i in range(len(data_blocks) - 1, -1, -1):
             block = data_blocks[i]
@@ -204,8 +216,10 @@ class ExcelProcessor:
                 )
                 target_range.PasteSpecial(-4104)
 
+                sheet.Rows(header_insert_row).RowHeight = header_height
+
         sheet.Application.CutCopyMode = False
-        sheet.Application.Calculation = -4105  # xlCalculationAutomatic
+        sheet.Application.Calculation = -4105
         sheet.Application.ScreenUpdating = True
 
         self.logger.info("Restructuring completed")
