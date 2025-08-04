@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 import shutil
 from excel_com import ExcelCOM
+from excel_processor_v2 import ExcelProcessorV2
 from config import Config
 from logger import get_logger
 
@@ -12,6 +13,7 @@ class ExcelProcessor:
     def __init__(self, config: Config):
         self.config = config
         self.logger = get_logger()
+        self.v2_processor = ExcelProcessorV2(config)
 
     def process_file(self, filepath: str):
         self.logger.info(f"Starting processing: {filepath}")
@@ -31,25 +33,22 @@ class ExcelProcessor:
                 total_sheets = wb.Sheets.Count
 
                 for sheet_index, sheet in enumerate(wb.Sheets, 1):
-                    # Check for pause/stop before each sheet
                     if hasattr(self, '_pause_stop_checker') and self._pause_stop_checker:
                         if not self._pause_stop_checker():
                             wb.Close(False)
                             raise Exception("Processing stopped by user")
 
                     sheet_name = sheet.Name
-                    self.logger.info(
-                        f"Excel {source_path.name} - Sheet {sheet_index}/{total_sheets} '{sheet_name}' - searching for header...")
+                    self.logger.info(f"Processing sheet {sheet_index}/{total_sheets}: '{sheet_name}'")
 
-                    header_range = self._find_header(sheet)
-                    if header_range:
-                        self.logger.info(
-                            f"Excel {source_path.name} - Sheet '{sheet_name}' - found header at row {header_range.Row}, duplicating rows...")
-                        self._restructure_sheet(sheet, header_range)
-                        self.logger.info(f"Excel {source_path.name} - Sheet '{sheet_name}' - Done.")
+                    # Try V2 method first
+                    if self.v2_processor.can_process(sheet):
+                        self.logger.info(f"Using V2 method for sheet '{sheet_name}'")
+                        self.v2_processor.process_sheet(sheet)
                     else:
-                        self.logger.warning(
-                            f"Excel {source_path.name} - Sheet '{sheet_name}' - no header found, skipping.")
+                        # Use V1 method
+                        self.logger.info(f"Using V1 method for sheet '{sheet_name}'")
+                        self._process_sheet_v1(sheet, source_path.name)
 
                 self.logger.info(f"Saving file...")
                 wb.Save()
@@ -58,6 +57,20 @@ class ExcelProcessor:
             self.logger.info(f"Successfully saved to: {output_file}")
         else:
             self.logger.info(f"[DRY RUN] Would save to: {output_file}")
+
+    def _process_sheet_v1(self, sheet, filename):
+        sheet_name = sheet.Name
+        self.logger.info(f"Excel {filename} - Sheet '{sheet_name}' - searching for header...")
+
+        header_range = self._find_header(sheet)
+        if header_range:
+            self.logger.info(
+                f"Excel {filename} - Sheet '{sheet_name}' - found header at row {header_range.Row}, duplicating rows...")
+            self._restructure_sheet(sheet, header_range)
+            self.logger.info(f"Excel {filename} - Sheet '{sheet_name}' - Done.")
+        else:
+            self.logger.warning(
+                f"Excel {filename} - Sheet '{sheet_name}' - no header found, skipping.")
 
     def _find_header(self, sheet):
         used_range = sheet.UsedRange
@@ -144,18 +157,15 @@ class ExcelProcessor:
         sheet.Application.ScreenUpdating = False
         sheet.Application.Calculation = -4135  # xlCalculationManual
 
-        # Process from end to beginning
         for i in range(len(data_blocks) - 1, -1, -1):
             block = data_blocks[i]
 
-            # Copy and insert duplicate
             source_range = sheet.Range(f"{block['start_row']}:{block['end_row']}")
             source_range.Copy()
 
             insert_row = block['end_row'] + 1
             sheet.Rows(insert_row).Insert(Shift=-4121)
 
-            # Fix formulas in duplicated rows
             for row_offset in range(block['end_row'] - block['start_row'] + 1):
                 source_row = block['start_row'] + row_offset
                 dup_row = insert_row + row_offset
@@ -166,7 +176,6 @@ class ExcelProcessor:
 
                     if source_cell.HasFormula:
                         formula = source_cell.Formula
-                        # Fix LEN/ДЛСТР formulas to reference cell above
                         if "LEN(" in formula.upper() or "ДЛСТР(" in formula.upper():
                             col_letter = sheet.Cells(1, col).Address.split("$")[1]
                             above_row = dup_row - 1
@@ -178,13 +187,11 @@ class ExcelProcessor:
                             )
                         dup_cell.Formula = formula
 
-            # Add empty row after duplicate
             empty_row = block['end_row'] + (block['end_row'] - block['start_row'] + 1) + 1
             sheet.Rows(empty_row).Insert(Shift=-4121)
             sheet.Rows(empty_row).Clear()
             sheet.Rows(empty_row).RowHeight = 15
 
-            # Add header before block (except for first block)
             if i > 0:
                 header_insert_row = block['start_row']
                 sheet.Rows(header_insert_row).Insert(Shift=-4121)
