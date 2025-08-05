@@ -211,7 +211,8 @@ class UpdateChecker:
         try:
             with urllib.request.urlopen(self.signature_asset['browser_download_url']) as response, open(sig_path, 'wb') as f:
                 f.write(response.read())
-            self.verify_signature(file_path, sig_path)
+            if not self.verify_signature(file_path, sig_path):
+                raise Exception('Signature verification failed')
         except Exception as e:
             if os.path.exists(file_path):
                 os.remove(file_path)
@@ -286,35 +287,6 @@ class UpdateChecker:
 
     def verify_signature(self, file_path, sig_path):
         try:
-            with tempfile.TemporaryDirectory() as gnupg_home:
-                env = os.environ.copy()
-                env['GNUPGHOME'] = gnupg_home
-                with tempfile.NamedTemporaryFile('w', delete=False, suffix='.asc') as key_file:
-                    key_file.write(PUBLIC_KEY)
-                    key_path = key_file.name
-                try:
-                    subprocess.run(
-                        ['gpg', '--import', key_path],
-                        check=True,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        env=env
-                    )
-                    subprocess.run(
-                        ['gpg', '--verify', sig_path, file_path],
-                        check=True,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        env=env
-                    )
-                    return True
-                finally:
-                    os.remove(key_path)
-        except Exception:
-            self._verify_with_pgpy(file_path, sig_path)
-
-    def _verify_with_pgpy(self, file_path, sig_path):
-        try:
             try:
                 import imghdr  # noqa: F401
             except ModuleNotFoundError:
@@ -328,8 +300,9 @@ class UpdateChecker:
                 data = f.read()
             if not pubkey.verify(data, sig):
                 raise Exception('Invalid signature')
+            return True
         except Exception as e:
-            raise Exception(f'PGPy verification failed: {e}')
+            raise Exception(f'Signature verification failed: {e}')
 
     def _install_update(self, new_exe_path):
         current_exe = sys.executable
