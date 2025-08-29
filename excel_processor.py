@@ -129,7 +129,8 @@ class ExcelProcessor:
 
     def _has_data_in_range(self, sheet, row, start_col, end_col):
         for col in range(start_col, end_col + 1):
-            if sheet.Cells(row, col).Value:
+            cell_value = sheet.Cells(row, col).Value
+            if cell_value is not None and str(cell_value).strip() != "":
                 return True
         return False
 
@@ -217,6 +218,17 @@ class ExcelProcessor:
                 target_range.PasteSpecial(-4104)
 
                 sheet.Rows(header_insert_row).RowHeight = header_height
+
+        # Remove duplicated header at the end if it was added accidentally
+        last_used_row = sheet.UsedRange.Row + sheet.UsedRange.Rows.Count - 1
+        if last_used_row > header_row:
+            is_header = True
+            for col in range(header_start_col, header_end_col + 1):
+                if sheet.Cells(last_used_row, col).Value != sheet.Cells(header_row, col).Value:
+                    is_header = False
+                    break
+            if is_header:
+                sheet.Rows(last_used_row).Delete()
 
         sheet.Application.CutCopyMode = False
         sheet.Application.Calculation = -4105
