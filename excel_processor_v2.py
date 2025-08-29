@@ -53,6 +53,12 @@ class ExcelProcessorV2:
 
         sheet.Application.Calculation = -4105
         sheet.Application.ScreenUpdating = True
+        # After duplicating all blocks Excel may end up with copied header
+        # rows at the bottom of the sheet. These duplicated headers serve no
+        # purpose and confuse users when exporting the result. Remove any
+        # stray header rows that appear after the first data block.
+        self._remove_duplicate_headers(sheet)
+
         self.logger.info(f"Processed {len(blocks)} blocks")
 
     def _find_all_blocks(self, sheet, used_range):
@@ -174,3 +180,44 @@ class ExcelProcessorV2:
                     new_shape.Left = target_cell.Left + (shape.Left - shape.TopLeftCell.Left)
         except Exception as e:
             self.logger.warning(f"Error copying shapes: {e}")
+
+    def _remove_duplicate_headers(self, sheet):
+        """Remove extra header rows accidentally copied to the bottom.
+
+        The processing steps duplicate ranges of rows, which occasionally
+        results in the original header row being copied as data to the end of
+        the sheet. This helper scans rows below the first header and deletes
+        any rows that exactly match the header's contents and color.
+        """
+        used_range = sheet.UsedRange
+        last_row = used_range.Row + used_range.Rows.Count - 1
+        cols_count = used_range.Columns.Count
+
+        header_row = None
+        header_values = []
+
+        # Locate first header row by color
+        for row in range(1, last_row + 1):
+            for col in range(1, cols_count + 1):
+                cell = sheet.Cells(row, col)
+                if cell.Interior.Color == self.config.header_color and cell.Value:
+                    header_row = row
+                    header_values = [sheet.Cells(row, c).Value for c in range(1, cols_count + 1)]
+                    break
+            if header_row:
+                break
+
+        if not header_row:
+            return
+
+        # Walk from bottom upwards and remove duplicated headers
+        for row in range(last_row, header_row, -1):
+            is_header = True
+            for col in range(1, cols_count + 1):
+                cell = sheet.Cells(row, col)
+                if cell.Interior.Color != self.config.header_color or cell.Value != header_values[col - 1]:
+                    is_header = False
+                    break
+
+            if is_header:
+                sheet.Rows(row).Delete()
