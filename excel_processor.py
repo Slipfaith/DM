@@ -244,14 +244,15 @@ class ExcelProcessor:
         try:
             target_end_row = target_start_row + (end_row - start_row)
 
-            shapes_count = sheet.Shapes.Count
-            existing_positions = set()
-
-            for idx in range(1, shapes_count + 1):
+            # If shapes already exist in the target range, skip copying to avoid duplicates
+            for idx in range(1, sheet.Shapes.Count + 1):
                 shape = sheet.Shapes(idx)
                 shape_row = shape.TopLeftCell.Row
                 if target_start_row <= shape_row <= target_end_row:
-                    existing_positions.add((round(shape.Left, 2), round(shape.Top, 2)))
+                    return
+
+            shapes_count = sheet.Shapes.Count
+            existing_positions = set()
 
             for idx in range(1, shapes_count + 1):
                 shape = sheet.Shapes(idx)
