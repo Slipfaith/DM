@@ -122,6 +122,14 @@ Sub RestructureSheet(sheet, headerRange)
             row = row + 1
         End If
     Loop
+    ' Remove extra header if it was added at the end of the sheet
+    Set usedRange = sheet.UsedRange
+    lastRow = usedRange.Row + usedRange.Rows.Count - 1
+    If lastRow > headerRow Then
+        If sheet.Cells(lastRow, startCol).Interior.Color = headerRange.Cells(1, 1).Interior.Color Then
+            sheet.Rows(lastRow).Delete
+        End If
+    End If
     sheet.Application.CutCopyMode = False
     sheet.Rows(headerRow).RowHeight = headerHeight
 End Sub
