@@ -1,6 +1,7 @@
 import re
 from pathlib import Path
 import shutil
+import subprocess
 from excel_com import ExcelCOM
 from excel_processor_v2 import ExcelProcessorV2
 from config import Config
@@ -16,13 +17,31 @@ class ExcelProcessor:
     def set_sheet_progress_callback(self, callback):
         self._sheet_progress_callback = callback
 
+    def _run_vbs_processor(self, filepath: str):
+        script_path = Path(__file__).with_name("excel_processor.vbs")
+        header_color = self.config.header_color if self.config.header_color is not None else 65535
+        dry_run_arg = "true" if self.config.dry_run else "false"
+        cmd = ["cscript", "//Nologo", str(script_path), filepath, str(header_color), dry_run_arg]
+        self.logger.info(f"Running VBScript: {' '.join(cmd)}")
+        subprocess.run(cmd, check=True)
+
     def process_file(self, filepath: str):
         self.logger.info(f"Starting processing: {filepath}")
 
         source_path = Path(filepath)
+
+        with ExcelCOM() as excel:
+            wb = excel.open_workbook(str(filepath))
+            requires_v1 = any(not self.v2_processor.can_process(sheet) for sheet in wb.Sheets)
+            wb.Close(False)
+
+        if requires_v1:
+            self.logger.info("Detected sheet requiring V1 method, delegating to VBScript processor")
+            self._run_vbs_processor(str(filepath))
+            return
+
         output_folder = source_path.parent / "Deeva"
         output_folder.mkdir(exist_ok=True)
-
         output_file = output_folder / source_path.name
 
         if not self.config.dry_run:
@@ -42,25 +61,21 @@ class ExcelProcessor:
                     sheet_name = sheet.Name
                     self.logger.info(f"Processing sheet {sheet_index}/{total_sheets}: '{sheet_name}'")
 
-                    if self.v2_processor.can_process(sheet):
-                        self.logger.info(f"Using V2 method for sheet '{sheet_name}'")
+                    self.logger.info(f"Using V2 method for sheet '{sheet_name}'")
 
-                        def v2_progress_callback(processed, total):
-                            progress_msg = f"Sheet '{sheet_name}': processing group {processed}/{total}"
-                            self.logger.info(progress_msg)
+                    def v2_progress_callback(processed, total):
+                        progress_msg = f"Sheet '{sheet_name}': processing group {processed}/{total}"
+                        self.logger.info(progress_msg)
 
-                        self.v2_processor.set_progress_callback(v2_progress_callback)
-                        self.v2_processor.process_sheet(sheet)
-                    else:
-                        self.logger.info(f"Using V1 method for sheet '{sheet_name}'")
-                        self._process_sheet_v1(sheet, source_path.name)
+                    self.v2_processor.set_progress_callback(v2_progress_callback)
+                    self.v2_processor.process_sheet(sheet)
 
                     self.logger.info(f"Sheet '{sheet_name}' - Done.")
 
                     if self._sheet_progress_callback:
                         self._sheet_progress_callback(sheet_index, max(1, total_sheets))
 
-                self.logger.info(f"Saving file...")
+                self.logger.info("Saving file...")
                 wb.Save()
                 wb.Close(False)
 
