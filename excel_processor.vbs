@@ -89,7 +89,7 @@ End Function
 
 Sub RestructureSheet(sheet, headerRange)
     Dim headerRow, startCol, endCol, usedRange, lastRow, headerHeight
-    Dim row, insertRow
+    Dim row
     headerRow = headerRange.Row
     startCol = headerRange.Column
     endCol = startCol + headerRange.Columns.Count - 1
@@ -100,16 +100,24 @@ Sub RestructureSheet(sheet, headerRange)
     Do While row <= lastRow
         If HasDataInRange(sheet, row, startCol, endCol) Then
             sheet.Rows(row).Copy
-            insertRow = row + 1
-            sheet.Rows(insertRow).Insert -4121
-            sheet.Rows(insertRow).PasteSpecial -4104
-            row = insertRow + 1
+            sheet.Rows(row + 1).Insert -4121
+            sheet.Rows(row + 1).PasteSpecial -4104
+            lastRow = lastRow + 1
+            row = row + 2
 
-            sheet.Rows(row).Insert -4121
             sheet.Rows(row).Clear
             sheet.Rows(row).RowHeight = 15
-            lastRow = lastRow + 2
-            row = row + 1
+
+            If row + 1 <= lastRow And HasDataInRange(sheet, row + 1, startCol, endCol) Then
+                sheet.Rows(row + 1).Insert -4121
+                headerRange.Copy
+                sheet.Cells(row + 1, startCol).PasteSpecial -4104
+                sheet.Rows(row + 1).RowHeight = headerHeight
+                lastRow = lastRow + 1
+                row = row + 2
+            Else
+                Exit Do
+            End If
         Else
             row = row + 1
         End If
