@@ -169,7 +169,9 @@ class ExcelProcessorV2:
 
     def _copy_shapes_in_range(self, sheet, start_row, end_row, target_start_row):
         try:
-            for shape in sheet.Shapes:
+            shapes_count = sheet.Shapes.Count
+            for idx in range(1, shapes_count + 1):
+                shape = sheet.Shapes(idx)
                 shape_row = shape.TopLeftCell.Row
                 if start_row <= shape_row <= end_row and not sheet.Rows(shape_row).Hidden:
                     row_offset = shape_row - start_row
