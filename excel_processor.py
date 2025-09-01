@@ -243,15 +243,14 @@ class ExcelProcessor:
     def _copy_shapes_in_range(self, sheet, start_row, end_row, target_start_row):
         try:
             target_end_row = target_start_row + (end_row - start_row)
-
-            shapes_count = sheet.Shapes.Count
-            existing_positions = []
-
-            for idx in range(1, shapes_count + 1):
+            for idx in range(sheet.Shapes.Count, 0, -1):
                 shape = sheet.Shapes(idx)
                 shape_row = shape.TopLeftCell.Row
                 if target_start_row <= shape_row <= target_end_row:
-                    existing_positions.append((shape.Left, shape.Top))
+                    shape.Delete()
+
+            shapes_count = sheet.Shapes.Count
+            existing_positions = []
 
             def _position_exists(left, top):
                 for ex_left, ex_top in existing_positions:
