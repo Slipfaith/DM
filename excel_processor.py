@@ -245,13 +245,19 @@ class ExcelProcessor:
             target_end_row = target_start_row + (end_row - start_row)
 
             shapes_count = sheet.Shapes.Count
-            existing_positions = set()
+            existing_positions = []
 
             for idx in range(1, shapes_count + 1):
                 shape = sheet.Shapes(idx)
                 shape_row = shape.TopLeftCell.Row
                 if target_start_row <= shape_row <= target_end_row:
-                    existing_positions.add((round(shape.Left, 2), round(shape.Top, 2)))
+                    existing_positions.append((shape.Left, shape.Top))
+
+            def _position_exists(left, top):
+                for ex_left, ex_top in existing_positions:
+                    if abs(ex_left - left) < 1 and abs(ex_top - top) < 1:
+                        return True
+                return False
 
             for idx in range(1, shapes_count + 1):
                 shape = sheet.Shapes(idx)
@@ -261,14 +267,13 @@ class ExcelProcessor:
                     target_cell = sheet.Cells(target_start_row + row_offset, shape.TopLeftCell.Column)
                     new_top = target_cell.Top + (shape.Top - shape.TopLeftCell.Top)
                     new_left = target_cell.Left + (shape.Left - shape.TopLeftCell.Left)
-                    pos_key = (round(new_left, 2), round(new_top, 2))
-                    if pos_key in existing_positions:
+                    if _position_exists(new_left, new_top):
                         continue
                     shape.Copy()
                     sheet.Paste()
                     new_shape = sheet.Shapes(sheet.Shapes.Count)
                     new_shape.Top = new_top
                     new_shape.Left = new_left
-                    existing_positions.add(pos_key)
+                    existing_positions.append((new_left, new_top))
         except Exception as e:
             self.logger.warning(f"Error copying shapes: {e}")
