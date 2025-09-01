@@ -31,7 +31,7 @@ class ExcelProcessor:
 
             with ExcelCOM() as excel:
                 wb = excel.open_workbook(str(output_file))
-                total_sheets = wb.Sheets.Count if wb.Sheets.Count > 0 else 1  # Гарантия: минимум 1
+                total_sheets = wb.Sheets.Count if wb.Sheets.Count > 0 else 1
 
                 for sheet_index, sheet in enumerate(wb.Sheets, 1):
                     if hasattr(self, '_pause_stop_checker') and self._pause_stop_checker:
@@ -57,9 +57,7 @@ class ExcelProcessor:
 
                     self.logger.info(f"Sheet '{sheet_name}' - Done.")
 
-                    # ---- SAFE PROGRESS ----
                     if self._sheet_progress_callback:
-                        # даже если что-то пойдет не так, делитель не будет равен 0
                         self._sheet_progress_callback(sheet_index, max(1, total_sheets))
 
                 self.logger.info(f"Saving file...")
@@ -70,28 +68,18 @@ class ExcelProcessor:
         else:
             self.logger.info(f"[DRY RUN] Would save to: {output_file}")
 
-    # ============ SHAPE UTILS ============
-
     def _delete_shapes_in_row(self, sheet, row):
-        deleted = 0
         for idx in reversed(range(1, sheet.Shapes.Count + 1)):
             shape = sheet.Shapes(idx)
             main_row = self._row_with_max_shape_overlap(sheet, shape)
             if main_row == row:
-                self.logger.info(f"[DELETE SHAPE] Удаляю shape '{shape.Name}' с main_row={main_row}, TopLeftCell={shape.TopLeftCell.Row}")
                 shape.Delete()
-                deleted += 1
-        if deleted == 0:
-            self.logger.info(f"[DELETE SHAPE] На строке {row} shape для удаления не найдено.")
 
     def _copy_shapes_for_row(self, sheet, shapes_info, target_row):
         for shape, shape_name, col in shapes_info:
             delta_top = shape.Top - shape.TopLeftCell.Top
             delta_left = shape.Left - shape.TopLeftCell.Left
             target_cell = sheet.Cells(target_row, col)
-            self.logger.info(
-                f"[COPY SHAPE] Копирую shape '{shape_name}' из строки (main_row={self._row_with_max_shape_overlap(sheet, shape)}) в строку {target_row}, колонка {col}"
-            )
             new_shape = shape.Duplicate()
             new_shape.Top = target_cell.Top + delta_top
             new_shape.Left = target_cell.Left + delta_left
@@ -120,15 +108,10 @@ class ExcelProcessor:
             main_row = self._row_with_max_shape_overlap(sheet, shape)
             shape_col = shape.TopLeftCell.Column
             shape_name = shape.Name
-            self.logger.info(
-                f"[SHAPE MAP] Shape '{shape_name}' main_row={main_row}, TopLeftCell={shape.TopLeftCell.Row}, колонка={shape_col}"
-            )
             if main_row not in row_to_shapes:
                 row_to_shapes[main_row] = []
             row_to_shapes[main_row].append((shape, shape_name, shape_col))
         return row_to_shapes
-
-    # ============ MAIN LOGIC ============
 
     def _process_sheet_v1(self, sheet, filename):
         sheet_name = sheet.Name
@@ -145,7 +128,6 @@ class ExcelProcessor:
 
     def _find_header(self, sheet):
         used_range = sheet.UsedRange
-
         if self.config.header_color:
             for row in range(1, min(20, used_range.Rows.Count + 1)):
                 if sheet.Rows(row).Hidden:
@@ -196,7 +178,7 @@ class ExcelProcessor:
         last_row = used_range.Row + used_range.Rows.Count - 1
         header_height = sheet.Rows(header_row).RowHeight
 
-        shapes_map = self._map_shapes_by_row(sheet)   # <--- исходная карта
+        shapes_map = self._map_shapes_by_row(sheet)
 
         data_blocks = []
         row = header_row + 1
@@ -220,6 +202,15 @@ class ExcelProcessor:
         if not data_blocks:
             self.logger.info(f"No data rows found after header")
             return
+
+        # считаем смещения для новых строк
+        block_row_map = {}  # old_row -> new_row
+        shift = 0
+        for i, block in enumerate(data_blocks):
+            start_row, end_row = block['start_row'], block['end_row']
+            block_row_map[start_row] = start_row + shift
+            # после каждого блока добавляется дубль и пустая строка
+            shift += (end_row - start_row + 1) + 1  # дубль + пустая
 
         sheet.Application.ScreenUpdating = False
         sheet.Application.Calculation = -4135
@@ -271,13 +262,13 @@ class ExcelProcessor:
                 target_range.PasteSpecial(-4104)
                 sheet.Rows(header_insert_row).RowHeight = header_height
 
-        # =============== ПОСТОБРАБОТКА: ВОССТАНОВЛЕНИЕ ПРОПАВШИХ SHAPE НА ОРИГИНАЛЕ ================
-        self.logger.info("=== [SHAPE POSTFIX] Проверка восстановления shape на оригинальных строках ===")
+        self.logger.info("=== [SHAPE POSTFIX] Проверка восстановления shape на актуальных строках ===")
         final_map = self._map_shapes_by_row(sheet)
         for orig_row, shapes_info in shapes_map.items():
+            new_row = block_row_map.get(orig_row, orig_row)
             found = False
-            if orig_row in final_map:
-                for s, name, col in final_map[orig_row]:
+            if new_row in final_map:
+                for s, name, col in final_map[new_row]:
                     for s0, name0, col0 in shapes_info:
                         if name == name0 and col == col0:
                             found = True
@@ -288,13 +279,10 @@ class ExcelProcessor:
                             if name0 == name1 and col1 == col0:
                                 delta_top = s1.Top - s1.TopLeftCell.Top
                                 delta_left = s1.Left - s1.TopLeftCell.Left
-                                target_cell = sheet.Cells(orig_row, col0)
+                                target_cell = sheet.Cells(new_row, col0)
                                 new_shape = s1.Duplicate()
                                 new_shape.Top = target_cell.Top + delta_top
                                 new_shape.Left = target_cell.Left + delta_left
-                                self.logger.info(
-                                    f"[SHAPE RESTORE] Восстановил shape '{name0}' на строку {orig_row}, колонка {col0} из дубля row={row}"
-                                )
 
         sheet.Application.CutCopyMode = False
         sheet.Application.Calculation = -4105
