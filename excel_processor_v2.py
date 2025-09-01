@@ -19,6 +19,8 @@ class ExcelProcessorV2:
         yellow_headers_count = 0
 
         for row in range(1, min(50, used_range.Rows.Count + 1)):
+            if sheet.Rows(row).Hidden:
+                continue
             for col in range(1, min(10, used_range.Columns.Count + 1)):
                 cell = sheet.Cells(row, col)
                 if cell.Interior.Color == self.config.header_color and cell.Value:
@@ -62,6 +64,10 @@ class ExcelProcessorV2:
         cols_count = used_range.Columns.Count
 
         while current_row <= last_row:
+            if sheet.Rows(current_row).Hidden:
+                current_row += 1
+                continue
+
             is_header = False
             for col in range(1, min(10, cols_count + 1)):
                 cell = sheet.Cells(current_row, col)
@@ -79,6 +85,10 @@ class ExcelProcessorV2:
                 current_group = []
 
                 while current_row <= last_row:
+                    if sheet.Rows(current_row).Hidden:
+                        current_row += 1
+                        continue
+
                     is_next_header = False
                     for col in range(1, min(10, cols_count + 1)):
                         if sheet.Cells(current_row, col).Interior.Color == self.config.header_color and sheet.Cells(
@@ -161,7 +171,7 @@ class ExcelProcessorV2:
         try:
             for shape in sheet.Shapes:
                 shape_row = shape.TopLeftCell.Row
-                if start_row <= shape_row <= end_row:
+                if start_row <= shape_row <= end_row and not sheet.Rows(shape_row).Hidden:
                     row_offset = shape_row - start_row
 
                     shape.Copy()
