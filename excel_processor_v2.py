@@ -170,13 +170,11 @@ class ExcelProcessorV2:
     def _copy_shapes_in_range(self, sheet, start_row, end_row, target_start_row):
         try:
             target_end_row = target_start_row + (end_row - start_row)
-
-            # If shapes already exist in the target range, skip copying to avoid duplicates
-            for idx in range(1, sheet.Shapes.Count + 1):
+            for idx in range(sheet.Shapes.Count, 0, -1):
                 shape = sheet.Shapes(idx)
                 shape_row = shape.TopLeftCell.Row
                 if target_start_row <= shape_row <= target_end_row:
-                    return
+                    shape.Delete()
 
             shapes_count = sheet.Shapes.Count
             existing_positions = set()
