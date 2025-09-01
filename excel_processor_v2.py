@@ -21,7 +21,7 @@ class ExcelProcessorV2:
         for row in range(1, min(50, used_range.Rows.Count + 1)):
             for col in range(1, min(10, used_range.Columns.Count + 1)):
                 cell = sheet.Cells(row, col)
-                if cell.Interior.Color == self.config.header_color and cell.Value:
+                if cell.Interior.Color == self.config.header_color and self._normalize_value(cell.Value):
                     yellow_headers_count += 1
                     break
 
@@ -71,7 +71,7 @@ class ExcelProcessorV2:
             is_header = False
             for col in range(1, min(10, cols_count + 1)):
                 cell = sheet.Cells(current_row, col)
-                if cell.Interior.Color == self.config.header_color and cell.Value:
+                if cell.Interior.Color == self.config.header_color and self._normalize_value(cell.Value):
                     is_header = True
                     break
 
@@ -87,8 +87,8 @@ class ExcelProcessorV2:
                 while current_row <= last_row:
                     is_next_header = False
                     for col in range(1, min(10, cols_count + 1)):
-                        if sheet.Cells(current_row, col).Interior.Color == self.config.header_color and sheet.Cells(
-                                current_row, col).Value:
+                        if sheet.Cells(current_row, col).Interior.Color == self.config.header_color and \
+                                self._normalize_value(sheet.Cells(current_row, col).Value):
                             is_next_header = True
                             break
 
@@ -99,7 +99,8 @@ class ExcelProcessorV2:
 
                     has_data = False
                     for col in range(1, cols_count + 1):
-                        if sheet.Cells(current_row, col).Value or sheet.Cells(current_row, col).HasFormula:
+                        cell = sheet.Cells(current_row, col)
+                        if self._normalize_value(cell.Value) or cell.HasFormula:
                             has_data = True
                             break
 
@@ -181,6 +182,12 @@ class ExcelProcessorV2:
         except Exception as e:
             self.logger.warning(f"Error copying shapes: {e}")
 
+    def _normalize_value(self, value):
+        """Return a stripped string representation of a cell value."""
+        if value is None:
+            return ""
+        return str(value).strip()
+
     def _remove_duplicate_headers(self, sheet):
         """Remove extra header rows accidentally copied to the bottom.
 
@@ -200,9 +207,12 @@ class ExcelProcessorV2:
         for row in range(1, last_row + 1):
             for col in range(1, cols_count + 1):
                 cell = sheet.Cells(row, col)
-                if cell.Interior.Color == self.config.header_color and cell.Value:
+                if cell.Interior.Color == self.config.header_color and self._normalize_value(cell.Value):
                     header_row = row
-                    header_values = [sheet.Cells(row, c).Value for c in range(1, cols_count + 1)]
+                    header_values = [
+                        self._normalize_value(sheet.Cells(row, c).Value)
+                        for c in range(1, cols_count + 1)
+                    ]
                     break
             if header_row:
                 break
@@ -215,7 +225,8 @@ class ExcelProcessorV2:
             is_header = True
             for col in range(1, cols_count + 1):
                 cell = sheet.Cells(row, col)
-                if cell.Interior.Color != self.config.header_color or cell.Value != header_values[col - 1]:
+                cell_value = self._normalize_value(cell.Value)
+                if cell.Interior.Color != self.config.header_color or cell_value != header_values[col - 1]:
                     is_header = False
                     break
 
