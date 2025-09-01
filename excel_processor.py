@@ -6,7 +6,6 @@ from excel_processor_v2 import ExcelProcessorV2
 from config import Config
 from logger import get_logger
 
-
 class ExcelProcessor:
     def __init__(self, config: Config):
         self.config = config
@@ -84,10 +83,8 @@ class ExcelProcessor:
 
     def _find_header(self, sheet):
         used_range = sheet.UsedRange
-        self.logger.debug(f"Sheet UsedRange: {used_range.Address}")
 
         if self.config.header_color:
-            self.logger.debug(f"Searching for header with color: {self.config.header_color}")
             for row in range(1, min(20, used_range.Rows.Count + 1)):
                 if sheet.Rows(row).Hidden:
                     continue
@@ -95,31 +92,21 @@ class ExcelProcessor:
                     cell = sheet.Cells(row, col)
                     cell_color = cell.Interior.Color
                     if cell_color == self.config.header_color:
-                        self.logger.debug(f"Found colored cell at Row:{row}, Col:{col}, Color:{cell_color}")
                         return self._find_header_range(sheet, row)
-
         return None
 
     def _find_header_range(self, sheet, header_row):
         used_range = sheet.UsedRange
-
         first_col = None
         last_col = None
-
         for col in range(1, used_range.Columns.Count + 1):
             cell_value = sheet.Cells(header_row, col).Value
             if cell_value is not None:
                 if first_col is None:
                     first_col = col
-                    self.logger.debug(f"Header starts at column {first_col}, value: '{cell_value}'")
                 last_col = col
-
         if first_col and last_col:
-            header_range = sheet.Range(sheet.Cells(header_row, first_col), sheet.Cells(header_row, last_col))
-            self.logger.debug(f"Header range: {header_range.Address} (Row:{header_row}, Cols:{first_col}-{last_col})")
-            return header_range
-
-        self.logger.warning(f"No header range found in row {header_row}")
+            return sheet.Range(sheet.Cells(header_row, first_col), sheet.Cells(header_row, last_col))
         return None
 
     def _has_formulas(self, sheet, row, start_col, end_col):
@@ -139,27 +126,41 @@ class ExcelProcessor:
                 return True
         return False
 
+    def _map_shapes_by_row(self, sheet, min_row, max_row):
+        row_to_shapes = {}
+        for idx in range(1, sheet.Shapes.Count + 1):
+            shape = sheet.Shapes(idx)
+            shape_row = shape.TopLeftCell.Row
+            if min_row <= shape_row <= max_row:
+                row_to_shapes.setdefault(shape_row, []).append(shape)
+        return row_to_shapes
+
+    def _copy_shapes_for_row(self, sheet, shapes, target_row):
+        for shape in shapes:
+            col = shape.TopLeftCell.Column
+            delta_top = shape.Top - shape.TopLeftCell.Top
+            delta_left = shape.Left - shape.TopLeftCell.Left
+            target_cell = sheet.Cells(target_row, col)
+            new_shape = shape.Duplicate()
+            new_shape.Top = target_cell.Top + delta_top
+            new_shape.Left = target_cell.Left + delta_left
+
     def _restructure_sheet(self, sheet, header_range):
         header_row = header_range.Row
         header_start_col = header_range.Column
         header_end_col = header_range.Column + header_range.Columns.Count - 1
-
         used_range = sheet.UsedRange
         last_row = used_range.Row + used_range.Rows.Count - 1
-
         header_height = sheet.Rows(header_row).RowHeight
 
         data_blocks = []
         row = header_row + 1
-
         while row <= last_row:
             if sheet.Rows(row).Hidden:
                 row += 1
                 continue
-
             if self._has_data_in_range(sheet, row, header_start_col, header_end_col):
                 block = {'start_row': row, 'end_row': row}
-
                 next_row = row + 1
                 if next_row <= last_row and not sheet.Rows(next_row).Hidden and \
                         self._has_formulas(sheet, next_row, header_start_col, header_end_col):
@@ -167,7 +168,6 @@ class ExcelProcessor:
                     row += 2
                 else:
                     row += 1
-
                 data_blocks.append(block)
             else:
                 row += 1
@@ -176,33 +176,30 @@ class ExcelProcessor:
             self.logger.info(f"No data rows found after header")
             return
 
-        self.logger.info(f"Found {len(data_blocks)} data blocks to process")
-
         sheet.Application.ScreenUpdating = False
         sheet.Application.Calculation = -4135
 
+        # Привязка картинок к строкам
+        shapes_map = self._map_shapes_by_row(sheet, header_row, last_row)
+
         for i in range(len(data_blocks) - 1, -1, -1):
             block = data_blocks[i]
-
-            source_range = sheet.Range(f"{block['start_row']}:{block['end_row']}")
+            start_row, end_row = block['start_row'], block['end_row']
+            source_range = sheet.Range(f"{start_row}:{end_row}")
             source_range.Copy()
-
-            insert_row = block['end_row'] + 1
+            insert_row = end_row + 1
             sheet.Rows(insert_row).Insert(Shift=-4121)
-
-            for row_offset in range(block['end_row'] - block['start_row'] + 1):
-                source_row = block['start_row'] + row_offset
-                dup_row = insert_row + row_offset
-
+            for row_offset in range(end_row - start_row + 1):
+                src_row = start_row + row_offset
+                dst_row = insert_row + row_offset
                 for col in range(header_start_col, header_end_col + 1):
-                    source_cell = sheet.Cells(source_row, col)
-                    dup_cell = sheet.Cells(dup_row, col)
-
+                    source_cell = sheet.Cells(src_row, col)
+                    dup_cell = sheet.Cells(dst_row, col)
                     if source_cell.HasFormula:
                         formula = source_cell.Formula
                         if "LEN(" in formula.upper() or "ДЛСТР(" in formula.upper():
                             col_letter = sheet.Cells(1, col).Address.split("$")[1]
-                            above_row = dup_row - 1
+                            above_row = dst_row - 1
                             formula = re.sub(
                                 r'(LEN|ДЛСТР)\s*\([^)]+\)',
                                 rf'\1({col_letter}{above_row})',
@@ -210,10 +207,11 @@ class ExcelProcessor:
                                 flags=re.IGNORECASE
                             )
                         dup_cell.Formula = formula
+                # копируем все картинки, которые были над src_row
+                if src_row in shapes_map:
+                    self._copy_shapes_for_row(sheet, shapes_map[src_row], dst_row)
 
-            self._copy_shapes_in_range(sheet, block['start_row'], block['end_row'], insert_row)
-
-            empty_row = block['end_row'] + (block['end_row'] - block['start_row'] + 1) + 1
+            empty_row = end_row + (end_row - start_row + 1) + 1
             sheet.Rows(empty_row).Insert(Shift=-4121)
             sheet.Rows(empty_row).Clear()
             sheet.Rows(empty_row).RowHeight = 15
@@ -222,53 +220,16 @@ class ExcelProcessor:
                 header_insert_row = block['start_row']
                 sheet.Rows(header_insert_row).Insert(Shift=-4121)
                 sheet.Rows(header_insert_row).Clear()
-
                 header_range.Copy()
                 target_range = sheet.Range(
                     sheet.Cells(header_insert_row, header_start_col),
                     sheet.Cells(header_insert_row, header_end_col)
                 )
                 target_range.PasteSpecial(-4104)
-
                 sheet.Rows(header_insert_row).RowHeight = header_height
-
-                self._copy_shapes_in_range(sheet, header_row, header_row, header_insert_row)
+                if header_row in shapes_map:
+                    self._copy_shapes_for_row(sheet, shapes_map[header_row], header_insert_row)
 
         sheet.Application.CutCopyMode = False
         sheet.Application.Calculation = -4105
         sheet.Application.ScreenUpdating = True
-
-        self.logger.info("Restructuring completed")
-
-    def _copy_shapes_in_range(self, sheet, start_row, end_row, target_start_row):
-        try:
-            target_end_row = target_start_row + (end_row - start_row)
-
-            shapes_count = sheet.Shapes.Count
-            existing_positions = set()
-
-            for idx in range(1, shapes_count + 1):
-                shape = sheet.Shapes(idx)
-                shape_row = shape.TopLeftCell.Row
-                if target_start_row <= shape_row <= target_end_row:
-                    existing_positions.add((round(shape.Left, 2), round(shape.Top, 2)))
-
-            for idx in range(1, shapes_count + 1):
-                shape = sheet.Shapes(idx)
-                shape_row = shape.TopLeftCell.Row
-                if start_row <= shape_row <= end_row and not sheet.Rows(shape_row).Hidden:
-                    row_offset = shape_row - start_row
-                    target_cell = sheet.Cells(target_start_row + row_offset, shape.TopLeftCell.Column)
-                    new_top = target_cell.Top + (shape.Top - shape.TopLeftCell.Top)
-                    new_left = target_cell.Left + (shape.Left - shape.TopLeftCell.Left)
-                    pos_key = (round(new_left, 2), round(new_top, 2))
-                    if pos_key in existing_positions:
-                        continue
-                    shape.Copy()
-                    sheet.Paste()
-                    new_shape = sheet.Shapes(sheet.Shapes.Count)
-                    new_shape.Top = new_top
-                    new_shape.Left = new_left
-                    existing_positions.add(pos_key)
-        except Exception as e:
-            self.logger.warning(f"Error copying shapes: {e}")
