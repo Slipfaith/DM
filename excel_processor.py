@@ -211,6 +211,8 @@ class ExcelProcessor:
                             )
                         dup_cell.Formula = formula
 
+            self._copy_shapes_in_range(sheet, block['start_row'], block['end_row'], insert_row)
+
             empty_row = block['end_row'] + (block['end_row'] - block['start_row'] + 1) + 1
             sheet.Rows(empty_row).Insert(Shift=-4121)
             sheet.Rows(empty_row).Clear()
@@ -230,8 +232,29 @@ class ExcelProcessor:
 
                 sheet.Rows(header_insert_row).RowHeight = header_height
 
+                self._copy_shapes_in_range(sheet, header_row, header_row, header_insert_row)
+
         sheet.Application.CutCopyMode = False
         sheet.Application.Calculation = -4105
         sheet.Application.ScreenUpdating = True
 
         self.logger.info("Restructuring completed")
+
+    def _copy_shapes_in_range(self, sheet, start_row, end_row, target_start_row):
+        try:
+            shapes_count = sheet.Shapes.Count
+            for idx in range(1, shapes_count + 1):
+                shape = sheet.Shapes(idx)
+                shape_row = shape.TopLeftCell.Row
+                if start_row <= shape_row <= end_row and not sheet.Rows(shape_row).Hidden:
+                    row_offset = shape_row - start_row
+
+                    shape.Copy()
+                    sheet.Paste()
+
+                    new_shape = sheet.Shapes(sheet.Shapes.Count)
+                    target_cell = sheet.Cells(target_start_row + row_offset, shape.TopLeftCell.Column)
+                    new_shape.Top = target_cell.Top + (shape.Top - shape.TopLeftCell.Top)
+                    new_shape.Left = target_cell.Left + (shape.Left - shape.TopLeftCell.Left)
+        except Exception as e:
+            self.logger.warning(f"Error copying shapes: {e}")
