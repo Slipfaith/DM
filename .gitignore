@@ -114,3 +114,6 @@ pytest_cache/
 *.pfx
 secrets.txt
 config_local.py
+
+# Allow VBScript processor
+!excel_processor.vbs
