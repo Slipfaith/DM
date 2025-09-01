@@ -170,31 +170,36 @@ class ExcelProcessorV2:
     def _copy_shapes_in_range(self, sheet, start_row, end_row, target_start_row):
         try:
             target_end_row = target_start_row + (end_row - start_row)
+
+            # Remove shapes from destination range so copies don't accumulate
             for idx in range(sheet.Shapes.Count, 0, -1):
                 shape = sheet.Shapes(idx)
                 shape_row = shape.TopLeftCell.Row
                 if target_start_row <= shape_row <= target_end_row:
                     shape.Delete()
 
-            shapes_count = sheet.Shapes.Count
-            existing_positions = set()
-
-            for idx in range(1, shapes_count + 1):
+            # Gather shapes to copy before duplicating to avoid iterating over new ones
+            shapes_to_copy = []
+            for idx in range(1, sheet.Shapes.Count + 1):
                 shape = sheet.Shapes(idx)
                 shape_row = shape.TopLeftCell.Row
                 if start_row <= shape_row <= end_row and not sheet.Rows(shape_row).Hidden:
-                    row_offset = shape_row - start_row
-                    target_cell = sheet.Cells(target_start_row + row_offset, shape.TopLeftCell.Column)
-                    new_top = target_cell.Top + (shape.Top - shape.TopLeftCell.Top)
-                    new_left = target_cell.Left + (shape.Left - shape.TopLeftCell.Left)
-                    pos_key = (round(new_left, 2), round(new_top, 2))
-                    if pos_key in existing_positions:
-                        continue
-                    shape.Copy()
-                    sheet.Paste()
-                    new_shape = sheet.Shapes(sheet.Shapes.Count)
-                    new_shape.Top = new_top
-                    new_shape.Left = new_left
-                    existing_positions.add(pos_key)
+                    shapes_to_copy.append(shape)
+
+            existing_positions = set()
+
+            for shape in shapes_to_copy:
+                row_offset = shape.TopLeftCell.Row - start_row
+                target_cell = sheet.Cells(target_start_row + row_offset, shape.TopLeftCell.Column)
+                new_top = target_cell.Top + (shape.Top - shape.TopLeftCell.Top)
+                new_left = target_cell.Left + (shape.Left - shape.TopLeftCell.Left)
+                pos_key = (round(new_left, 2), round(new_top, 2))
+                if pos_key in existing_positions:
+                    continue
+
+                dup_shape = shape.Duplicate()
+                dup_shape.Top = new_top
+                dup_shape.Left = new_left
+                existing_positions.add(pos_key)
         except Exception as e:
             self.logger.warning(f"Error copying shapes: {e}")
