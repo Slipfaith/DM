@@ -174,19 +174,24 @@ class ExcelProcessorV2:
 
     def _copy_shapes_in_range(self, sheet, start_row, end_row, target_start_row):
         try:
+            shapes_to_copy = []
             for shape in sheet.Shapes:
                 shape_row = shape.TopLeftCell.Row
                 if start_row <= shape_row <= end_row:
-                    row_offset = shape_row - start_row
+                    shapes_to_copy.append(shape)
 
-                    shape.Copy()
-                    sheet.Paste()
+            for shape in shapes_to_copy:
+                shape_row = shape.TopLeftCell.Row
+                row_offset = shape_row - start_row
 
-                    new_shape = sheet.Shapes(sheet.Shapes.Count)
+                shape.Copy()
+                sheet.Paste()
 
-                    target_cell = sheet.Cells(target_start_row + row_offset, shape.TopLeftCell.Column)
-                    new_shape.Top = target_cell.Top + (shape.Top - shape.TopLeftCell.Top)
-                    new_shape.Left = target_cell.Left + (shape.Left - shape.TopLeftCell.Left)
+                new_shape = sheet.Shapes(sheet.Shapes.Count)
+
+                target_cell = sheet.Cells(target_start_row + row_offset, shape.TopLeftCell.Column)
+                new_shape.Top = target_cell.Top + (shape.Top - shape.TopLeftCell.Top)
+                new_shape.Left = target_cell.Left + (shape.Left - shape.TopLeftCell.Left)
         except Exception as e:
             self.logger.warning(f"Error copying shapes: {e}")
 
