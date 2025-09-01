@@ -6,6 +6,7 @@ from excel_processor_v2 import ExcelProcessorV2
 from config import Config
 from logger import get_logger
 
+
 class ExcelProcessor:
     def __init__(self, config: Config):
         self.config = config
@@ -77,18 +78,37 @@ class ExcelProcessor:
 
     def _copy_shapes_for_row(self, sheet, shapes_info, target_row):
         for shape, shape_name, col in shapes_info:
-            delta_top = shape.Top - shape.TopLeftCell.Top
-            delta_left = shape.Left - shape.TopLeftCell.Left
-            target_cell = sheet.Cells(target_row, col)
-            new_shape = shape.Duplicate()
-            new_shape.Top = target_cell.Top + delta_top
-            new_shape.Left = target_cell.Left + delta_left
+            try:
+                try:
+                    shape.Placement = 2  # xlMove
+                except Exception:
+                    self.logger.debug(f"Не удалось выставить Placement для '{shape_name}'")
+
+                try:
+                    top_left_cell = shape.TopLeftCell
+                except Exception:
+                    self.logger.warning(f"Картинка '{shape_name}' не имеет TopLeftCell — пропускаем")
+                    continue
+
+                delta_top = shape.Top - top_left_cell.Top
+                delta_left = shape.Left - top_left_cell.Left
+
+                target_cell = sheet.Cells(target_row, col)
+                new_shape = shape.Duplicate()
+                new_shape.Top = target_cell.Top + delta_top
+                new_shape.Left = target_cell.Left + delta_left
+
+            except Exception as e:
+                self.logger.error(f"Ошибка при копировании картинки '{shape_name}': {e}")
 
     def _row_with_max_shape_overlap(self, sheet, shape):
-        top = shape.Top
-        bottom = shape.Top + shape.Height
-        first_row = shape.TopLeftCell.Row
-        last_row = shape.BottomRightCell.Row
+        try:
+            top = shape.Top
+            bottom = shape.Top + shape.Height
+            first_row = shape.TopLeftCell.Row
+            last_row = shape.BottomRightCell.Row
+        except Exception:
+            return 1
 
         max_overlap = 0
         main_row = first_row
@@ -105,9 +125,13 @@ class ExcelProcessor:
         row_to_shapes = {}
         for idx in range(1, sheet.Shapes.Count + 1):
             shape = sheet.Shapes(idx)
-            main_row = self._row_with_max_shape_overlap(sheet, shape)
-            shape_col = shape.TopLeftCell.Column
-            shape_name = shape.Name
+            try:
+                main_row = self._row_with_max_shape_overlap(sheet, shape)
+                shape_col = shape.TopLeftCell.Column
+                shape_name = shape.Name
+            except Exception:
+                self.logger.warning(f"Shape '{shape.Name}' невозможно замапить — пропуск")
+                continue
             if main_row not in row_to_shapes:
                 row_to_shapes[main_row] = []
             row_to_shapes[main_row].append((shape, shape_name, shape_col))
@@ -203,13 +227,11 @@ class ExcelProcessor:
             self.logger.info(f"No data rows found after header")
             return
 
-        # считаем смещения для новых строк
-        block_row_map = {}  # old_row -> new_row
+        block_row_map = {}
         shift = 0
         for i, block in enumerate(data_blocks):
             start_row, end_row = block['start_row'], block['end_row']
             block_row_map[start_row] = start_row + shift
-            # после каждого блока добавляется дубль и пустая строка
             shift += (end_row - start_row + 1) + 1  # дубль + пустая
 
         sheet.Application.ScreenUpdating = False
@@ -277,8 +299,16 @@ class ExcelProcessor:
                     for row, lst in final_map.items():
                         for s1, name1, col1 in lst:
                             if name0 == name1 and col1 == col0:
-                                delta_top = s1.Top - s1.TopLeftCell.Top
-                                delta_left = s1.Left - s1.TopLeftCell.Left
+                                try:
+                                    s1.Placement = 2
+                                except Exception:
+                                    pass
+                                try:
+                                    delta_top = s1.Top - s1.TopLeftCell.Top
+                                    delta_left = s1.Left - s1.TopLeftCell.Left
+                                except Exception:
+                                    self.logger.warning(f"Не удалось вычислить позицию для '{name0}'")
+                                    continue
                                 target_cell = sheet.Cells(new_row, col0)
                                 new_shape = s1.Duplicate()
                                 new_shape.Top = target_cell.Top + delta_top
