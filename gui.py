@@ -162,7 +162,7 @@ class ProcessorThread(QThread):
 
                 def sheet_completed_callback(current_sheet, total_sheets):
                     self.processed_sheets += 1
-                    progress = int((self.processed_sheets / self.total_sheets) * 100)
+                    progress = int((self.processed_sheets / self.total_sheets) * 100) if self.total_sheets else 0
                     self.progress.emit(progress)
                     self.sheet_progress.emit(self.processed_sheets, self.total_sheets)
 
