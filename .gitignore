@@ -114,3 +114,4 @@ pytest_cache/
 *.pfx
 secrets.txt
 config_local.py
+!excel_processor.vbs
