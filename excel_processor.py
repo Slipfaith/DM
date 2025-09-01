@@ -29,7 +29,17 @@ class ExcelProcessor:
             vbs_path = Path(__file__).with_name("excel_processor.vbs")
             cmd = ["cscript", "//NoLogo", str(vbs_path), str(output_file), str(self.config.header_color)]
             self.logger.info("Running VBScript: %s", " ".join(cmd))
-            subprocess.run(cmd, check=True)
+            try:
+                result = subprocess.run(
+                    cmd, check=True, capture_output=True, text=True
+                )
+                if result.stdout:
+                    self.logger.debug(result.stdout.strip())
+            except subprocess.CalledProcessError as exc:
+                err_output = exc.stderr or exc.stdout
+                if err_output:
+                    self.logger.error("VBScript failed: %s", err_output.strip())
+                raise
             self.logger.info(f"Successfully processed: {output_file}")
         else:
             self.logger.info(f"[DRY RUN] Would process: {output_file}")
