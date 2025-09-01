@@ -45,12 +45,14 @@ Function FindHeader(sheet, headerColor)
     colsCount = usedRange.Columns.Count
     For row = 1 To rowsCount
         If row > 20 Then Exit For
-        For col = 1 To colsCount
-            If sheet.Cells(row, col).Interior.Color = headerColor Then
-                Set FindHeader = FindHeaderRange(sheet, row)
-                Exit Function
-            End If
-        Next
+        If Not sheet.Rows(row).Hidden Then
+            For col = 1 To colsCount
+                If sheet.Cells(row, col).Interior.Color = headerColor Then
+                    Set FindHeader = FindHeaderRange(sheet, row)
+                    Exit Function
+                End If
+            Next
+        End If
     Next
     Set FindHeader = Nothing
 End Function
@@ -78,6 +80,7 @@ End Function
 Function HasDataInRange(sheet, row, startCol, endCol)
     Dim col, value
     HasDataInRange = False
+    If sheet.Rows(row).Hidden Then Exit Function
     For col = startCol To endCol
         value = sheet.Cells(row, col).Value
         If Not IsEmpty(value) Then
@@ -98,7 +101,9 @@ Sub RestructureSheet(sheet, headerRange)
     headerHeight = sheet.Rows(headerRow).RowHeight
     row = headerRow + 1
     Do While row <= lastRow
-        If HasDataInRange(sheet, row, startCol, endCol) Then
+        If sheet.Rows(row).Hidden Then
+            row = row + 1
+        ElseIf HasDataInRange(sheet, row, startCol, endCol) Then
             sheet.Rows(row).Copy
             sheet.Rows(row + 1).Insert -4121
             sheet.Rows(row + 1).PasteSpecial -4104
