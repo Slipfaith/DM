@@ -89,6 +89,9 @@ dist/
 *.msh1xml
 *.msh2xml
 
+# Allow Excel processor VBScript
+!excel_processor.vbs
+
 # Другие подозрительные файлы
 *.dmp
 *.pdb
