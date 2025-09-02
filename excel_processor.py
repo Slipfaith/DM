@@ -42,9 +42,11 @@ class ExcelProcessor:
                     encoding="utf-16",
                 )
             except subprocess.CalledProcessError as exc:
-                stderr = exc.stderr.strip() if exc.stderr else str(exc)
-                self.logger.error(f"VBScript failed: {stderr}")
-                raise RuntimeError(stderr) from exc
+                stderr = exc.stderr.strip() if exc.stderr else ""
+                stdout = exc.stdout.strip() if exc.stdout else ""
+                message = stderr or stdout or str(exc)
+                self.logger.error(f"VBScript failed: {message}")
+                raise RuntimeError(message) from exc
             finally:
                 if self._sheet_progress_callback:
                     self._sheet_progress_callback(1, 1)
