@@ -27,6 +27,7 @@ class ExcelProcessor:
             cmd = [
                 "cscript",
                 "//nologo",
+                "//U",
                 str(script_path),
                 str(output_file),
                 str(self.config.header_color),
@@ -38,6 +39,7 @@ class ExcelProcessor:
                     check=True,
                     capture_output=True,
                     text=True,
+                    encoding="utf-16",
                 )
             except subprocess.CalledProcessError as exc:
                 stderr = exc.stderr.strip() if exc.stderr else str(exc)

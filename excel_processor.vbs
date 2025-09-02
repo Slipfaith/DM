@@ -1,4 +1,7 @@
 Option Explicit
+' Force English locale so all error messages are returned in English.
+SetLocale 1033
+
 Dim filePath, headerColor
 If WScript.Arguments.Count < 2 Then
     WScript.StdErr.WriteLine "Usage: cscript excel_processor.vbs <file> <header_color>"
