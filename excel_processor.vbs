@@ -45,12 +45,15 @@ Function FindHeader(sheet, headerColor)
     colsCount = usedRange.Columns.Count
     For row = 1 To rowsCount
         If row > 20 Then Exit For
-        For col = 1 To colsCount
-            If sheet.Cells(row, col).Interior.Color = headerColor Then
-                Set FindHeader = FindHeaderRange(sheet, row)
-                Exit Function
-            End If
-        Next
+        ' Skip hidden rows when searching for header
+        If Not sheet.Rows(row).EntireRow.Hidden Then
+            For col = 1 To colsCount
+                If sheet.Cells(row, col).Interior.Color = headerColor Then
+                    Set FindHeader = FindHeaderRange(sheet, row)
+                    Exit Function
+                End If
+            Next
+        End If
     Next
     Set FindHeader = Nothing
 End Function
@@ -98,7 +101,10 @@ Sub RestructureSheet(sheet, headerRange)
     headerHeight = sheet.Rows(headerRow).RowHeight
     row = headerRow + 1
     Do While row <= lastRow
-        If HasDataInRange(sheet, row, startCol, endCol) Then
+        ' Skip hidden rows during restructuring
+        If sheet.Rows(row).EntireRow.Hidden Then
+            row = row + 1
+        ElseIf HasDataInRange(sheet, row, startCol, endCol) Then
             sheet.Rows(row).Copy
             sheet.Rows(row + 1).Insert -4121
             sheet.Rows(row + 1).PasteSpecial -4104
