@@ -33,10 +33,16 @@ class ExcelProcessor:
             ]
             self.logger.info("Running VBScript processor")
             try:
-                subprocess.run(cmd, check=True)
+                result = subprocess.run(
+                    cmd,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
             except subprocess.CalledProcessError as exc:
-                self.logger.error(f"VBScript failed: {exc}")
-                raise
+                stderr = exc.stderr.strip() if exc.stderr else str(exc)
+                self.logger.error(f"VBScript failed: {stderr}")
+                raise RuntimeError(stderr) from exc
             finally:
                 if self._sheet_progress_callback:
                     self._sheet_progress_callback(1, 1)
