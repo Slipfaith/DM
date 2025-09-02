@@ -89,6 +89,8 @@ class ExcelProcessor:
         if self.config.header_color:
             self.logger.debug(f"Searching for header with color: {self.config.header_color}")
             for row in range(1, min(20, used_range.Rows.Count + 1)):
+                if sheet.Rows(row).Hidden:
+                    continue
                 for col in range(1, used_range.Columns.Count + 1):
                     cell = sheet.Cells(row, col)
                     cell_color = cell.Interior.Color
@@ -121,6 +123,8 @@ class ExcelProcessor:
         return None
 
     def _has_formulas(self, sheet, row, start_col, end_col):
+        if sheet.Rows(row).Hidden:
+            return False
         for col in range(start_col, end_col + 1):
             cell = sheet.Cells(row, col)
             if cell.HasFormula:
@@ -128,6 +132,8 @@ class ExcelProcessor:
         return False
 
     def _has_data_in_range(self, sheet, row, start_col, end_col):
+        if sheet.Rows(row).Hidden:
+            return False
         for col in range(start_col, end_col + 1):
             if sheet.Cells(row, col).Value:
                 return True
@@ -147,10 +153,18 @@ class ExcelProcessor:
         row = header_row + 1
 
         while row <= last_row:
+            if sheet.Rows(row).Hidden:
+                row += 1
+                continue
+
             if self._has_data_in_range(sheet, row, header_start_col, header_end_col):
                 block = {'start_row': row, 'end_row': row}
 
-                if row + 1 <= last_row and self._has_formulas(sheet, row + 1, header_start_col, header_end_col):
+                if (
+                    row + 1 <= last_row
+                    and not sheet.Rows(row + 1).Hidden
+                    and self._has_formulas(sheet, row + 1, header_start_col, header_end_col)
+                ):
                     block['end_row'] = row + 1
                     row += 2
                 else:
